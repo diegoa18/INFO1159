@@ -1,31 +1,41 @@
-from random import uniform
-
 import matplotlib.pyplot as plt
 import numpy as np
 import sympy as sp
 
-lda = uniform(0, 1)
-func_input = input("ingrese la funcion no lineal para x: ")
-xa = float(input("ingrese el valor para xa: "))
-xb = float(input("ingrese el valor para xb: "))
-
 x = sp.symbols("x")
-func_expression = sp.sympify(func_input)
-func = sp.lambdify((x), func_expression, "math")
+try:
+    func = sp.lambdify(x, sp.sympify(input("ingrese f(x): ")), "numpy")
+except:
+    print("función invalida")
+    exit()
 
+xa, xb = float(input("ingrese xa: ")), float(input("ingrese xb: "))
+if xa > xb:
+    xa, xb = xb, xa
 
-if func(lda * xa + (1 - lda) * xb) >= lda * func(xa) + (1 - lda) * func(xb):
-    print("en el intervalo [xa,xb] la funcion es concava")
-if func(lda * xa + (1 - lda) * xb) <= lda * func(xa) + (1 - lda) * func(xb):
-    print("en el intervalo [xa,xb] la funcion es convexa")
+dl = float(input("ingrese Δλ (0 < Δλ ≤ 1): "))
+if not 0 < dl <= 1:
+    print("Δλ debe estar en (0, 1]")
+    exit()
 
-x_values = [xa, xb]
-y_values = [func(xa), func(xb)]
+lda = np.arange(0, 1 + dl, dl)
+is_concave = np.all(
+    func(lda * xa + (1 - lda) * xb) >= lda * func(xa) + (1 - lda) * func(xb)
+)
+is_convex = np.all(
+    func(lda * xa + (1 - lda) * xb) <= lda * func(xa) + (1 - lda) * func(xb)
+)
 
-rangex = np.arange(xa - 1, xb + 1, 0.1)
-rangey = func(rangex)
+if is_concave and not is_convex:
+    print("cóncava")
+elif is_convex and not is_concave:
+    print("convexa")
+elif is_convex and is_concave:
+    print("lineal")
+else:
+    print("no es ni concava ni convexa")
 
-plt.plot(x_values, y_values, "bo", linestyle="-", color="blue")
-plt.plot(rangex, rangey, color="red")
-
+t = np.linspace(xa - 1, xb + 1, 500)
+plt.plot(t, func(t), "b-", label="f(x)")
+plt.plot([xa, xb], [func(xa), func(xb)], "r--", label="recta")
 plt.show()

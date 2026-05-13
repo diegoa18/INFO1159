@@ -18,7 +18,7 @@ for x1 in rango:
             valor = obj(x1, x2)
             evaluaciones.append(([x1, x2], valor))
 
-valores_obj = [t[1] for t in evaluaciones]
+valores_obj = [e[1] for e in evaluaciones]
 indice_opt = np.argmax(valores_obj)
 optimo = evaluaciones[indice_opt]
 

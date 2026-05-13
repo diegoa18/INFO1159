@@ -1,24 +1,26 @@
 import numpy as np
+import sympy as sp
 
-# añadir sympy (lo quite pa optimizar y no exploque mi pc :c)
-# da los mismos resultados que el del diego, pero el suyo más rapido, no se por qué xd
+theta = float(input("Ingrese el valor de θ: "))
+dx = float(input("Ingrese el valor para Δx: "))
 
-teta = float(input("Ingrese el valor de teta: "))
-salto = float(input("Ingrese el valor del salto: "))
-dx = np.arange(0, 5000+salto, salto) 
+rango = np.arange(0, 5000 + dx, dx)
 
-tupla = []
+x1, x2 = sp.symbols("x1 x2")
+expresion_obj = 1.20 * x1 + 1.16 * x2 - theta * (2 * x1**2 + x2**2 + (x1 + x2) ** 2)
+obj = sp.lambdify((x1, x2), expresion_obj, "numpy")
 
-#recorre todos los puntos posibles
-for x1 in dx:
-    for x2 in dx:
-        if x1 + x2 <= 5000: #restricción
-            valor = (1.20*x1 + 1.16*x2 - teta*(2*x1**2 + x2**2 + (x1+x2)**2))
-            tupla.append(([x1, x2], valor)) # añade el punto y su valor
+evaluaciones = []
 
-valores = [t[1] for t in tupla] # extrae los valores de la función            
-indice = np.argmax(valores)
-resultado = tupla[indice]
+for x1 in rango:
+    for x2 in rango:
+        if x1 + x2 <= 5000:
+            valor = obj(x1, x2)
+            evaluaciones.append(([x1, x2], valor))
 
-print(f"x* = ({resultado[0][0]}, {resultado[0][1]})")
-print(f"f(x*) = {resultado[1]}")
+valores_obj = [t[1] for t in evaluaciones]
+indice_opt = np.argmax(valores_obj)
+optimo = evaluaciones[indice_opt]
+
+print(f"x^* = ({optimo[0][0]}, {optimo[0][1]})")
+print(f"f(x^*) = max f(x) = {optimo[1]}")

@@ -26,7 +26,7 @@ def tipo_funcion():
         if f_del_promedio <= promedio_de_f - 1e-9:
             convexa =True
         
-        if f_del_promedio >= promedio_de_f + 1e+9:
+        if f_del_promedio >= promedio_de_f + 1e-9:
             concava = True
 
     if concava:
@@ -36,10 +36,11 @@ def tipo_funcion():
     else:
         return "Ninguna de las dos"
 
+resultado = tipo_funcion()
+print(resultado)
 
-def graficar():
-
-
-if __name__ == "__main__":
-    resultado = tipo_funcion()
-    print(resultado)
+t = np.linspace(x_a - 1, x_b + 1, 500)
+plt.plot(t, f(t), "b-", label="f(x)")
+plt.plot([x_a, x_b], [f(x_a), f(x_b)], "r--", label="recta")
+plt.legend()
+plt.show()

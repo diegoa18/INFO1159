@@ -21,23 +21,20 @@ def find_delta(x, func, x_val, tolerancia, divisiones):
 
 if __name__ == "__main__":
     x = sp.symbols("x")
-    caso = input("1: derivada numerica; 2: encontrar delta")
-    if caso == "1":
-        func = sp.sympify(input("ingrese f(x): "))
-        x_val, deltax = (
-            float(input("ingrese el punto x: ")),
-            float(input("ingrese Δx: ")),
-        )
-        d_numerica(x, func, x_val, deltax)
+    caso = input("1: derivada numerica; 2: encontrar delta: ")
+    func = sp.sympify(input("ingrese f(x): "))
 
+    if caso == "1":
+        d_numerica(
+            x, func, float(input("ingrese el punto x: ")), float(input("ingrese Δx: "))
+        )
     elif caso == "2":
-        func = sp.sympify(input("ingrese f(x): "))
-        x_val, tolerancia, divisiones = (
+        find_delta(
+            x,
+            func,
             float(input("ingrese el punto x: ")),
             float(input("ingrese la tolerancia e: ")),
-            int(input("ingrese divisor: ")),
+            divisiones=2,
         )
-        find_delta(x, func, x_val, tolerancia, divisiones)
-
     else:
         print("caso no valido")

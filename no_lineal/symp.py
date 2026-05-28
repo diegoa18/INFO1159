@@ -1,11 +1,10 @@
 import sympy as sp
-from sympy import Symbol
 
-def derivar():
+def derivar(funcion):
     x = sp.Symbol('x')
-    
+
     funcion = x**2 + 3
-    derivada = sp.diff(funcion)
+    derivada = sp.diff(funcion, x)
     return derivada
 
-print(derivar)
+print(derivar())

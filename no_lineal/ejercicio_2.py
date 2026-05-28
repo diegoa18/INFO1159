@@ -1,6 +1,7 @@
 from sympy import symbols, sympify, lambdify
 import numpy as np
 import matplotlib.pyplot as plt
+from math import sin,cos,pi
 
 x = symbols('x')
 
@@ -28,8 +29,9 @@ def tipo_funcion():
         
         if f_del_promedio >= promedio_de_f + 1e-9:
             concava = True
-
-    if concava:
+    if concava and convexa:
+        return "Ninguna de las dos"
+    elif concava:
         return "Es concava"
     elif convexa:
         return "Es convexa"
@@ -40,7 +42,7 @@ resultado = tipo_funcion()
 print(resultado)
 
 t = np.linspace(x_a - 1, x_b + 1, 500)
-plt.plot(t, f(t), "b-", label="f(x)")
-plt.plot([x_a, x_b], [f(x_a), f(x_b)], "r--", label="recta")
+plt.plot(t, f(t), "r-", label="f(x)")
+plt.plot([x_a, x_b], [f(x_a), f(x_b)], "b--", label="recta")
 plt.legend()
 plt.show()

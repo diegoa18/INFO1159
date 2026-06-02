@@ -17,6 +17,8 @@ respecto al gradiente, cuanto cambia el grad cuando nos movemos de xn a deltaxn:
 esto equivalente a:
     f(xn + deltaxn) = f(xn) + gradf(xn)trans*deltaxn + ((1/2)*deltaxn)trans*grad2f(xn + t*deltaxn)deltaxn"""
 
+import matplotlib.pyplot as plt
+import numpy as np
 import sympy as sp
 
 
@@ -28,3 +30,19 @@ def univariable(func, x, a, n):
         termino = coeficiente * (x - a) ** k / sp.factorial(k)
         polinomio += termino
     return sp.expand(polinomio)
+
+
+def plot_univariable(func, x, a, n):
+    polinomio = univariable(func, x, a, n)
+    func_n, poli_n = sp.lambdify(x, func, "numpy"), sp.lambdify(x, polinomio, "numpy")
+    xs = np.linspace(a - 5, a + 5, 1000)
+    plt.plot(xs, func_n(xs), label="f(x)")
+    plt.plot(xs, poli_n(xs), label="Pn(x)")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+
+# x = sp.Symbol("x")
+# func = sp.exp(x)
+# plot_univariable(func, x, 0, 4)

@@ -6,7 +6,7 @@ def d_numerica(x, func, x_val, deltax):
     print(f"resultado: {sp.N(d_numerica)}")
 
 
-def find_delta(x, func, x_val, tolerancia, divisiones):
+def find_delta(x, func, x_val, tolerancia, divisiones=2):
     derivada = sp.diff(func, x)
     delta = sp.sqrt(tolerancia) * x_val
     d_num = float(derivada.subs(x, x_val))
@@ -34,7 +34,6 @@ if __name__ == "__main__":
             func,
             float(input("ingrese el punto x: ")),
             float(input("ingrese la tolerancia e: ")),
-            divisiones=2,
         )
     else:
         print("caso no valido")

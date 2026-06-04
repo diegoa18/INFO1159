@@ -24,16 +24,18 @@ if __name__ == "__main__":
     caso = input("1: derivada numerica; 2: encontrar delta: ")
     func = sp.sympify(input("ingrese f(x): "))
 
-    if caso == "1":
-        d_numerica(
-            x, func, float(input("ingrese el punto x: ")), float(input("ingrese Δx: "))
-        )
-    elif caso == "2":
-        find_delta(
-            x,
-            func,
-            float(input("ingrese el punto x: ")),
-            float(input("ingrese la tolerancia e: ")),
-        )
-    else:
-        print("caso no valido")
+
+    match caso:
+        case "1":        
+            d_numerica(
+                x, func, float(input("ingrese el punto x: ")), float(input("ingrese Δx: "))
+            )
+        case "2":
+            find_delta(
+                x,
+                func,
+                float(input("ingrese el punto x: ")),
+                float(input("ingrese la tolerancia e: ")),
+            )
+        case _:
+            print("caso no valido")

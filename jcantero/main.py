@@ -9,14 +9,14 @@ A = np.array([ # restricciones
 B = np.array([4, 12, 18], dtype=float) # resultados de las restricciones
 C = np.array([30000,50000], dtype=float) # función objetivo
 
-MI = np.eye(len(A)) # matriz de identidad 
+MI = np.eye(len(A)) # matriz de identidad
 
 # reshape : cambia la forma de un array sin cambiar sus datos
 # hstack : apila arrays en secuencia horizontal (columnas)
 restricciones = np.hstack((np.zeros((3,1)), A, MI, B.reshape(-1,1)))
 
 fila_z = np.hstack(([1], -C, np.zeros(3), [0])) # fila de la función objetivo
- 
+
 # vstack : apila arrays en secuencia vertical (filas)
 tabla = np.vstack((fila_z, restricciones))
 
@@ -27,13 +27,13 @@ def imprimir_tabla(tabla, filas, columnas):
     print("\nMétodo Simples: Forma tabular\n")
 
     header = ["VB"] + columnas # encabezado
-    print("  ".join(f"{h:>8}" for h in header)) # imprimir encabezado 
+    print("  ".join(f"{h:>8}" for h in header)) # imprimir encabezado
     print("-" * (10 * len(header))) # imprimir línea separadora
 
     for i, fila in enumerate(tabla): # imprimir cada fila de la tabla
         nombre = filas[i] # nombre de la fila
         print(f"{nombre:>8}", end="  ") # imprimir nombre de la fila
-        for val in fila: 
+        for val in fila:
             print(f"{val:>8.1f}", end="  ") # imprimir cada valor de la fila
         print() # nueva línea después de cada fila
 
@@ -54,7 +54,7 @@ def fila_pivote(tabla, col_pivote):
 	return np.argmin(coeficiente) + 1 # devolver el índice de la fila pivote
 
 def pivotear(tabla, fila, col):
-	pivote = tabla[fila][col] # valor del pivote 
+	pivote = tabla[fila][col] # valor del pivote
 	tabla[fila] = tabla[fila] / pivote # dividir la fila pivote por el valor del pivote para hacer que el pivote sea 1
 
 	for i in range(len(tabla)): # iterar sobre todas las filas

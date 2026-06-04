@@ -1,6 +1,6 @@
 from sympy import symbols, sympify, lambdify, sin, pi
 import numpy as np
-import matxplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 x = symbols('x')
 
@@ -13,7 +13,7 @@ xa = float(input("ingrese el valor de xa: ")) # valor de x1
 xb = float(input("ingrese el valor de xb: ")) # valor de x2
 landa = float(input("ingrese el valor de landa [0,1]: ")) # valor de lambda entre 0 y 1
 
-rango = np.arange(0, 3, 0.01) # rango de x para graficar
+rango = np.arange(xa - 1, xb + 1, 0.01) # rango de x para graficar
 y = fun(rango) # valores de f(x) para el rango de x
 
 valor = np.arange(xa, xb, 0.01)  # rango de x entre xa y xb para graficar la función en ese intervalo
@@ -28,7 +28,6 @@ for xa in valor:
     for xb in valor:
         rhs = landa*fun(xa) + (1-landa)*fun(xb) # lado derecho
         lhs = fun(landa*xa + (1-landa)*xb) # lado izquierdo
-
         if lhs <= rhs:
             concava = False
         if lhs >= rhs:

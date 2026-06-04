@@ -1,25 +1,36 @@
 from sympy import *
+import math
 
 x = symbols('x')
-expresion = input("ingrese la funcion: ")
-puntox = float(input("ingrese el valor del punto x: "))
-dx = float(input("ingrese el valor del punto dx: "))
-eps = float(input("ingrese el valor de e: "))
+
+expresion = input("Ingrese la función: ")
+puntox = float(input("Ingrese el valor del punto x: "))
+
+eps = 2.22e-16
+dx = math.sqrt(eps) * puntox
+
 expr = sympify(expresion)
+# Derivada exacta
+def general(expr, variable, punto):
+    derivada = diff(expr, variable)
+    resultado = derivada.subs(variable, punto)
+    return resultado
 
-def general(expr, x, num, eps):
-    derivada = diff(expr, x)
-    dx = sqrt(eps) * x
-
-    if abs(derivada - num) < eps:
-        return resultado
-
+# Derivada numérica
 def numerica(expr, punto, deltax):
     fun = lambdify(x, expr, 'numpy')
     derivada = (fun(punto + deltax) - fun(punto)) / deltax
     return derivada
 
-rn = numerica(expresion, x, dx)
-rg = general(expresion, x, rn, eps)
 
-print(f"numerica: {rn}, general: {rg}")
+# Resultados
+rn = numerica(expr, puntox, dx)
+rg = general(expr, x, puntox)
+error = rn-rg
+
+print(f"Derivada numérica: {rn}")
+print(f"Derivada exacta: {rg}")
+if error < eps:
+    print(f"el error: {error} no es menor que {eps}")
+else:
+    print(f"el error: {error} es menor que eps")

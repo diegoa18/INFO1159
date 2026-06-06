@@ -19,23 +19,21 @@ def find_delta(x, func, x_val, tolerancia, divisiones=2):
     print(f"Δx: {sp.N(abs(delta))}")
 
 
-if __name__ == "__main__":
-    x = sp.symbols("x")
-    caso = input("1: derivada numerica; 2: encontrar delta: ")
-    func = sp.sympify(input("ingrese f(x): "))
+x = sp.symbols("x")
+caso = input("1: derivada numerica; 2: encontrar delta: ")
+func = sp.sympify(input("ingrese f(x): "))
 
-
-    match caso:
-        case "1":        
-            d_numerica(
-                x, func, float(input("ingrese el punto x: ")), float(input("ingrese Δx: "))
-            )
-        case "2":
-            find_delta(
-                x,
-                func,
-                float(input("ingrese el punto x: ")),
-                float(input("ingrese la tolerancia e: ")),
-            )
-        case _:
-            print("caso no valido")
+match caso:
+    case "1":
+        d_numerica(
+            x, func, float(input("ingrese el punto x: ")), float(input("ingrese Δx: "))
+        )
+    case "2":
+        find_delta(
+            x,
+            func,
+            float(input("ingrese el punto x: ")),
+            float(input("ingrese la tolerancia e: ")),
+        )
+    case _:
+        print("caso no valido")

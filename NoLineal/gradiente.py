@@ -1,7 +1,5 @@
 import sympy as sp
 
-"""en que direccion aumenta mas rapidamente f(xn) y con que intensidad"""
-
 
 def gradiente_numerico(variables, func, x_vals, deltas):
     punto = {v: xv for v, xv in zip(variables, x_vals)}

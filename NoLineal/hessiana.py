@@ -2,6 +2,7 @@ import numpy as np
 import sympy as sp
 
 
+# HESSIANA PARA N VARIABLES
 def hessiana_numerica(variables, func, x_vals, deltas):
     punto = dict(zip(variables, x_vals))
 

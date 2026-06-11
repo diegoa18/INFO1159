@@ -1,0 +1,196 @@
+\documentclass[12pt]{article}
+
+\usepackage[spanish]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{mathpazo}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+\title{Demostración del Teorema de Taylor para una Función Bivariante}
+\author{Diego Álvarez \\[4pt]
+  \small \textit{Algoritmos de Optimización — INFO1159} \\[2pt]
+  \small \textit{Programación No Lineal}}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Enunciado}
+
+Dada la función
+\[
+f(x_1, x_2) = 1.20x_1 + 1.16x_2 - \frac{1}{2}\bigl(2x_1^2 + x_2^2 + (x_1 + x_2)^2\bigr)
+\]
+con el punto \(x^T = [0.23,\; 0.41]\), el incremento \(\Delta x^T = [0.01,\; 0.01]\) y
+\(t = 0.01\), demuestre el teorema de Taylor de segundo orden.
+
+\section{Teorema de Taylor (Segundo Orden)}
+
+Sea \(f : \mathbb{R}^n \to \mathbb{R}\) dos veces diferenciable en un entorno de \(x\).
+Entonces existe \(t \in [0, 1]\) tal que
+\[
+f(x + \Delta x) = f(x) + \Delta x^T \nabla f(x) + \frac{1}{2} \Delta x^T \nabla^2 f(z) \Delta x,
+\]
+donde \(z = x + t\,\Delta x\).
+
+\section{Solución}
+
+\subsection{Simplificación de la función}
+
+\begin{align*}
+f(x_1, x_2)
+&= 1.20x_1 + 1.16x_2 - \frac{1}{2}\bigl(2x_1^2 + x_2^2 + x_1^2 + 2x_1x_2 + x_2^2\bigr) \\
+&= 1.20x_1 + 1.16x_2 - \frac{1}{2}\bigl(3x_1^2 + 2x_2^2 + 2x_1x_2\bigr) \\
+&= 1.20x_1 + 1.16x_2 - \frac{3}{2}x_1^2 - x_2^2 - x_1x_2.
+\end{align*}
+
+\subsection{Cálculo del gradiente}
+
+\[
+\nabla f(x) =
+\begin{bmatrix}
+\frac{\partial f}{\partial x_1} \\[4pt]
+\frac{\partial f}{\partial x_2}
+\end{bmatrix}
+=
+\begin{bmatrix}
+1.20 - 3x_1 - x_2 \\
+1.16 - x_1 - 2x_2
+\end{bmatrix}.
+\]
+
+Evaluado en \(x = [0.23,\; 0.41]\):
+\[
+\nabla f(x) =
+\begin{bmatrix}
+1.20 - 3(0.23) - 0.41 \\
+1.16 - 0.23 - 2(0.41)
+\end{bmatrix}
+=
+\begin{bmatrix}
+0.10 \\
+0.11
+\end{bmatrix}.
+\]
+
+\subsection{Cálculo de la matriz Hessiana}
+
+\[
+\nabla^2 f(x) =
+\begin{bmatrix}
+\frac{\partial^2 f}{\partial x_1^2} & \frac{\partial^2 f}{\partial x_1\partial x_2} \\[4pt]
+\frac{\partial^2 f}{\partial x_2\partial x_1} & \frac{\partial^2 f}{\partial x_2^2}
+\end{bmatrix}
+=
+\begin{bmatrix}
+-3 & -1 \\
+-1 & -2
+\end{bmatrix}.
+\]
+
+La matriz Hessiana es constante (no depende de \(x\)), por lo tanto
+\(\nabla^2 f(z) = \nabla^2 f(x)\) para cualquier \(z\).
+
+\subsection{Valor de la función en \(x\)}
+
+\[
+f(x) = 1.20(0.23) + 1.16(0.41) - \frac{3}{2}(0.23)^2 - (0.41)^2 - (0.23)(0.41).
+\]
+
+\begin{align*}
+f(x) &= 0.2760 + 0.4756 - \frac{3}{2}(0.0529) - 0.1681 - 0.0943 \\
+     &= 0.7516 - 0.07935 - 0.1681 - 0.0943 \\
+     &= 0.40985.
+\end{align*}
+
+\subsection{Término lineal}
+
+\[
+\Delta x^T \nabla f(x) =
+\begin{bmatrix} 0.01 & 0.01 \end{bmatrix}
+\begin{bmatrix} 0.10 \\ 0.11 \end{bmatrix}
+= 0.01(0.10) + 0.01(0.11) = 0.0021.
+\]
+
+\subsection{Término cuadrático}
+
+Primero se calcula el punto \(z = x + t\,\Delta x\) con \(t = 0.01\):
+\[
+z =
+\begin{bmatrix} 0.23 \\ 0.41 \end{bmatrix}
++ 0.01
+\begin{bmatrix} 0.01 \\ 0.01 \end{bmatrix}
+=
+\begin{bmatrix} 0.2301 \\ 0.4101 \end{bmatrix}.
+\]
+
+Dado que la Hessiana es constante,
+\[
+\frac{1}{2} \Delta x^T \nabla^2 f(z) \Delta x
+= \frac{1}{2}
+\begin{bmatrix} 0.01 & 0.01 \end{bmatrix}
+\begin{bmatrix}
+-3 & -1 \\
+-1 & -2
+\end{bmatrix}
+\begin{bmatrix} 0.01 \\ 0.01 \end{bmatrix}.
+\]
+
+\[
+\nabla^2 f(z) \Delta x =
+\begin{bmatrix}
+-3(0.01) - 1(0.01) \\
+-1(0.01) - 2(0.01)
+\end{bmatrix}
+=
+\begin{bmatrix}
+-0.04 \\
+-0.03
+\end{bmatrix}.
+\]
+
+\[
+\Delta x^T \nabla^2 f(z) \Delta x =
+\begin{bmatrix} 0.01 & 0.01 \end{bmatrix}
+\begin{bmatrix} -0.04 \\ -0.03 \end{bmatrix}
+= -0.0004 - 0.0003 = -0.0007.
+\]
+
+\[
+\frac{1}{2} \Delta x^T \nabla^2 f(z) \Delta x = \frac{-0.0007}{2} = -0.00035.
+\]
+
+\subsection{Aproximación de Taylor}
+
+\[
+f(x + \Delta x) \approx f(x) + \Delta x^T \nabla f(x) + \frac{1}{2} \Delta x^T \nabla^2 f(z) \Delta x
+\]
+
+\[
+f(x + \Delta x) \approx 0.40985 + 0.0021 - 0.00035 = 0.4116.
+\]
+
+\subsection{Verificación directa}
+
+Evaluando directamente \(f\) en \(x + \Delta x = [0.24,\; 0.42]\):
+
+\begin{align*}
+f(x + \Delta x) &= 1.20(0.24) + 1.16(0.42) - \frac{3}{2}(0.24)^2 - (0.42)^2 - (0.24)(0.42) \\
+&= 0.2880 + 0.4872 - \frac{3}{2}(0.0576) - 0.1764 - 0.1008 \\
+&= 0.7752 - 0.0864 - 0.1764 - 0.1008 \\
+&= 0.4116.
+\end{align*}
+
+\subsection{Conclusión}
+
+\[
+f(x + \Delta x) = 0.4116 = f(x) + \Delta x^T \nabla f(x) + \frac{1}{2} \Delta x^T \nabla^2 f(z) \Delta x,
+\]
+
+lo que verifica el teorema de Taylor de segundo orden. La igualdad es exacta porque
+\(f\) es una función cuadrática y su matriz Hessiana es constante; por lo tanto,
+el polinomio de Taylor de segundo orden coincide exactamente con la función.
+
+\end{document}

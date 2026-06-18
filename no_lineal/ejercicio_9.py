@@ -16,31 +16,34 @@ gradiente = [sp.diff(funcion, x),sp.diff(funcion, y)]
 grad_f = sp.lambdify((x, y), gradiente, "numpy")
 
 iteracion = 0
-while iteracion < n:
 
-    gradiente_actual = np.array(grad_f(punto_actual[0], punto_actual[1]), dtype= float)
+gradiente_actual = np.array(grad_f(punto_actual[0], punto_actual[1]), dtype= float)
+modulo_gradiente = np.linalg.norm(gradiente_actual)
 
-    modulo_gradiente = np.linalg.norm(gradiente_actual)
+while modulo_gradiente >= tolerancia and iteracion < n:
 
     if iteracion > 0:
-
         s_k = punto_actual - punto_anterior
         y_k = gradiente_actual - gradiente_anterior
 
-        denominador = np.dot(s_k, y_k)
+        denominador = np.dot(y_k, y_k)
 
         if abs(denominador) < 1e-12:
             print("Denominador demasiado pequeño")
             break
 
-        t = np.dot(s_k, s_k) / denominador
+        t = abs(np.dot(s_k, s_k)) / denominador
 
     punto_anterior = punto_actual.copy()
     gradiente_anterior = gradiente_actual.copy()
 
-    punto_actual = punto_actual - t * gradiente_actual
+    delta_x = -gradiente_actual
 
+    punto_actual = punto_actual + t * delta_x
     iteracion += 1
 
-print(f"Punto óptimo: {punto_actual}")
+    gradiente_actual = np.array(grad_f(punto_actual[0], punto_actual[1]), dtype=float)
+    modulo_gradiente = np.linalg.norm(gradiente_actual)
+
+print(f"Punto optimo: {punto_actual}")
 print(f"Iteraciones: {iteracion}")

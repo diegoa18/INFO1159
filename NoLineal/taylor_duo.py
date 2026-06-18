@@ -1,6 +1,8 @@
 import numpy as np
 import sympy as sp
 
+casi_cero = 1e-10
+
 
 def hessiana_num(func, vars, x0, dx):
     f = sp.lambdify(vars, func, "numpy")
@@ -18,7 +20,7 @@ def hessiana_num(func, vars, x0, dx):
 
 def clasificar_punto(f_xx, f_yy, f_xy):
     H = f_xx * f_yy - f_xy**2
-    if abs(H) < 1e-10:
+    if abs(H) < casi_cero:
         return "Sin informacion suficiente (H = 0)"
     if H < 0:
         return "Punto de silla"

@@ -2,47 +2,16 @@
 import random
 import matplotlib.pyplot as plt
 
-
-# ---- MOCKS / SIMULACIONES ----
-
-def mock_cargar_parametros():
-    # simula lo que hace parser_csv pero sin pedir inputs por consola para no trabar las pruebas
-    mapa = [["X","X"], ["X","X"]] # matriz falsa
-    return {
-        "n": 20, "pm": 0.15, "N": 5, "G": 50, "ps": 0.3, "seed": 42
-    }, mapa, (1,1), (2,2)
-
-def mock_ejecutar_y_evaluar(poblacion):
-    # simula la ejecucion en el laberinto y el calculo de fitness de la dani
-    evaluados = []
-    for cromo in poblacion:
-        # inventamos valores para probar el ordenamiento 
-        j_inventado = random.uniform(10, 500)
-        es_valido = random.choice([True, False])
-        distancia = random.randint(0, 10)
-        tau = random.randint(5, 20)
-        
-        # guardamos (cromosoma, validez, J, D, tau, ruta_falsa)
-     
-        ruta_falsa = [(1,1), (1,2), (2,2)]
-        evaluados.append({
-            "cromo": cromo, 
-            "valido": es_valido, 
-            "J": j_inventado, 
-            "D": distancia, 
-            "tau": tau,
-            "ruta": ruta_falsa
-        })
-    return evaluados
-
-def mock_seleccion_elitismo_reproduccion(evaluados, params):
-    # retorna una nueva poblacion al azar
-    return [["M", "H", "M"] for _ in range(params["N"])]
+# Imports reales de los modulos de tus companeros
+import parser_csv
+from cromosoma import Cromosoma, simular
+from fitness import funcion_objetivo_J
+from seleccion import ordenar_poblacion, seleccionar_padres
 
 # ---- ORQUESTACION Y RESULTADOS ----
 
 def graficar_evolucion_j(historico_j):
-    # grafica el mejor J por generacion en escala logaritmica (requisito pauta)
+    # Grafica el mejor J por generacion en escala logaritmica
     plt.figure(figsize=(8, 5))
     plt.plot(range(1, len(historico_j) + 1), historico_j, marker='o', linestyle='-', color='b')
     plt.yscale('log')
@@ -53,7 +22,7 @@ def graficar_evolucion_j(historico_j):
     plt.show()
 
 def graficar_proporcion_validas(historico_validas):
-    # grafica el porcentaje de soluciones validas por generacion (requisito pauta)
+    # Grafica el porcentaje de soluciones validas por generacion
     plt.figure(figsize=(8, 5))
     plt.plot(range(1, len(historico_validas) + 1), historico_validas, color='g')
     plt.title('Proporción de Soluciones Válidas por Generación')
@@ -63,64 +32,112 @@ def graficar_proporcion_validas(historico_validas):
     plt.grid(True, linestyle='--', alpha=0.7)
     plt.show()
 
-def mostrar_mejores_unicos(mejor_global):
-    # imprime en consola la info del mejor cromosoma encontrado
-    # cuando esten los reales, se filtra por cromosomas unicos que empaten en J
+def mostrar_mejores_unicos(mejores_unicos, mejor_j_global):
+    # Imprime en consola los cromosomas unicos empatados en el mejor J
     print("\n" + "="*50)
     print("REPORTE DE MEJORES CROMOSOMAS ÚNICOS")
     print("="*50)
-    print(f"Mejor J global encontrado: {mejor_global['J']:.2f}")
-    print(f"Pasos tomados (tau): {mejor_global['tau']}")
-    print(f"Trayectoria auditada (X, Y):")
-    for paso in mejor_global['ruta']:
-        print(f" -> {paso}")
+    print(f"Mejor J global encontrado: {mejor_j_global:.2f}")
+    
+    for i, (cromo, metricas) in enumerate(mejores_unicos, 1):
+        print(f"\nSolución Única #{i}")
+        print(f"Cromosoma: {cromo.genes}")
+        print(f"Pasos tomados (tau): {metricas.tau}")
+        print(f"Trayectoria auditada (X, Y):")
+        for paso in metricas.trayectoria:
+            print(f" -> {paso}")
     print("="*50)
 
 def main():
-    # 1. carga de datos (usando el mock por ahora)
-    params, mapa, inicio, meta = mock_cargar_parametros()
-    random.seed(params["seed"])
-    
-    # 2. inicializar poblacion
-    poblacion = [["M", "H", "M"] for _ in range(params["N"])]
-    
-    # variables para guardar estadisticas de las graficas
-    historico_mejor_j = []
-    historico_prop_validas = []
-    
-    mejor_global_absoluto = None
+    # 1. Solicitar parametros por consola 
+    print("--- Configuración del Algoritmo Genético ---")
+    ruta_csv = input("Ingresa la ruta del archivo CSV (ej: input.csv): ")
+    n = int(input("Longitud del cromosoma (n): "))
+    pm = float(input("Probabilidad de mutación (pm, ej: 0.1): "))
+    N_pob = int(input("Tamaño de la población (N, debe ser impar): "))
+    G = int(input("Número de generaciones (G): "))
+    ps = float(input("Presión selectiva (ps, ej: 0.05): "))
+    seed = int(input("Semilla aleatoria (seed): "))
 
-    print("Iniciando evolución...")
+    # Validacion rapida de poblacion impar (requisito de la pauta)
+    if N_pob % 2 == 0:
+        print("Aviso: La población debe ser impar. Sumando 1 al tamaño de la población.")
+        N_pob += 1
+
+    params = {"n": n, "pm": pm, "N": N_pob, "G": G, "ps": ps, "seed": seed}
+
+    # 2. Inicializar mapa y semilla usando random.Random para aislar la semilla
+    mapa, inicio, meta = parser_csv.cargar_laberinto(ruta_csv)
+    rng = random.Random(params["seed"])
+
+    # 3. Poblacion inicial usando la clase de Diego
+    poblacion = [Cromosoma.aleatorio(params["n"], rng) for _ in range(params["N"])]
+
+    mejor_global_absoluto = None
+    mejor_j_global = float('inf')
+    historico_j = []
+    historico_validas = []
     
-    # 3. ciclo de generaciones
+    # Set para guardar solo elementos unicos que empaten en el primer lugar
+    mejores_unicos = set()
+
+    print("\nIniciando evolución...")
+
+    # 4. Ciclo de generaciones
     for gen in range(params["G"]):
-        # evaluar poblacion actual
-        evaluados = mock_ejecutar_y_evaluar(poblacion)
         
-        # buscar el mejor de esta generacion para las estadisticas
-        # el orden lexicografico real lo hara Joaco: prioridad valido, menor J, menor D, menor tau
-        evaluados.sort(key=lambda x: (not x["valido"], x["J"], x["D"], x["tau"]))
-        mejor_gen = evaluados[0]
-        
-        # actualizar el mejor global historico (Elitismo puro para el reporte)
-        if mejor_global_absoluto is None or mejor_gen["J"] < mejor_global_absoluto["J"]:
-            mejor_global_absoluto = mejor_gen
+        # Simular y emparejar cada cromosoma con sus metricas (Tupla: Individuo)
+        evaluados = [(c, simular(c, mapa, inicio, meta)) for c in poblacion]
+
+        # Ordenar con la funcion de Joaquin (usa la funcion J de Dani internamente)
+        ordenados = ordenar_poblacion(evaluados)
+
+        # Rescatar el mejor de esta generacion (el indice 0 tras ordenar)
+        mejor_actual_cromo, mejor_actual_metricas = ordenados[0]
+        j_actual = funcion_objetivo_J(mejor_actual_metricas)
+
+        # Actualizar elitismo y tracking de unicos absolutos
+        if j_actual < mejor_j_global:
+            mejor_j_global = j_actual
+            mejor_global_absoluto = (mejor_actual_cromo, mejor_actual_metricas)
+            mejores_unicos.clear()
+            mejores_unicos.add((mejor_actual_cromo, mejor_actual_metricas))
+        elif j_actual == mejor_j_global:
+            mejores_unicos.add((mejor_actual_cromo, mejor_actual_metricas))
+
+        # Guardar metricas para los graficos
+        historico_j.append(mejor_j_global)
+        cant_validas = sum(1 for _, m in evaluados if m.es_valido)
+        historico_validas.append(cant_validas / params["N"])
+
+        # 5. Elitismo: construir la nueva poblacion reservando el primer cupo
+        nueva_pob_cromosomas = [mejor_global_absoluto[0].copiar()]
+
+        # Rellenar los N-1 espacios restantes con hijos generados por operadores
+        while len(nueva_pob_cromosomas) < params["N"]:
+            p1, p2 = seleccionar_padres(ordenados, params["ps"])
             
-        historico_mejor_j.append(mejor_global_absoluto["J"])
-        
-        # calcular proporcion de validas
-        cant_validas = sum(1 for ind in evaluados if ind["valido"])
-        historico_prop_validas.append(cant_validas / params["N"])
-        
-        # delegar seleccion, cruza y mutacion para la siguiente generacion
-        poblacion = mock_seleccion_elitismo_reproduccion(evaluados, params)
+            punto_corte = rng.randint(1, params["n"] - 1)
+            # p1[0] y p2[0] acceden al objeto Cromosoma dentro de la tupla Individuo
+            h1, h2 = p1[0].cruzar_un_punto(p2[0], punto_corte)
+            
+            h1.mutar(params["pm"], rng)
+            h2.mutar(params["pm"], rng)
+            
+            nueva_pob_cromosomas.append(h1)
+            # Asegurar no pasarnos del limite impar al agregar el segundo hijo
+            if len(nueva_pob_cromosomas) < params["N"]:
+                nueva_pob_cromosomas.append(h2)
+
+        # Reemplazar la poblacion antigua por la nueva
+        poblacion = nueva_pob_cromosomas
 
     print("Evolución terminada. Generando reportes...")
-    
-    # 4. mostrar resultados exigidos por la rubrica
-    mostrar_mejores_unicos(mejor_global_absoluto)
-    graficar_evolucion_j(historico_mejor_j)
-    graficar_proporcion_validas(historico_prop_validas)
+
+    # 6. Mostrar resultados exigidos por la pauta
+    mostrar_mejores_unicos(mejores_unicos, mejor_j_global)
+    graficar_evolucion_j(historico_j)
+    graficar_proporcion_validas(historico_validas)
 
 if __name__ == "__main__":
     main()

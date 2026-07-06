@@ -63,20 +63,20 @@ def cargar_laberinto(ruta_archivo):
     
     return mapa_numpy, inicio, meta
 
-# input de variables para el algoritmo genetico
-print("configuracion del algoritmo genetico")
-ruta_csv = input("ingresa la ruta del archivo csv (ej: input.csv): ")
+if __name__ == "__main__":
+    # input de variables para el algoritmo genetico
+    print("configuracion del algoritmo genetico")
+    ruta_csv = input("ingresa la ruta del archivo csv (ej: input.csv): ")
 
-# los datos obligatorios que pide el profe en el pdf
-n = int(input("longitud del cromosoma (n): "))
-pm = float(input("probabilidad de mutacion (pm, ej: 0.1): "))
-N_pob = int(input("tamano de la poblacion (n, debe ser impar): "))
-G = int(input("numero de generaciones (g): "))
-ps = float(input("presion selectiva (ps, ej: 0.05): "))
-seed = int(input("semilla aleatoria (seed): "))
+    # los datos obligatorios que pide el profe en el pdf
+    n = int(input("longitud del cromosoma (n): "))
+    pm = float(input("probabilidad de mutacion (pm, ej: 0.1): "))
+    N_pob = int(input("tamano de la poblacion (n, debe ser impar): "))
+    G = int(input("numero de generaciones (g): "))
+    ps = float(input("presion selectiva (ps, ej: 0.05): "))
+    seed = int(input("semilla aleatoria (seed): "))
 
-mapa, inicio, meta = cargar_laberinto(ruta_csv)
-
+    mapa, inicio, meta = cargar_laberinto(ruta_csv)
 """
 # quitar las comillas para mostrar que se cargo del input
 print("\nresultados de la carga")

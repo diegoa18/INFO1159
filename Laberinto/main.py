@@ -1,5 +1,5 @@
 #IMPORTACIONES AQUI ABAJO
-import parser_csv 
+import orquestacion
 
 if __name__ == "__main__":
-    parser_csv.cargar_laberinto("input.csv")
+    orquestacion.main()

@@ -1,4 +1,5 @@
 from typing import List, Sequence, Tuple
+
 from cromosoma import MetricasCromosoma
 
 

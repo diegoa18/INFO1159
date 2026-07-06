@@ -1,4 +1,4 @@
-import random as ra
+import random
 from typing import List, Tuple
 
 from cromosoma import Cromosoma, MetricasCromosoma
@@ -16,7 +16,7 @@ def prioridad_factibilidad(individuo: Individuo) -> int:
     return 2
 
 
-def clave_ordenamiento(individuo: Individuo) -> Tuple[int, float, float, float]:
+def clave_ordenamiento(individuo: Individuo) -> Tuple[int, float, int, int]:
     _, resultado = individuo
     rho = prioridad_factibilidad(individuo)
     J = funcion_objetivo_J(resultado)
@@ -48,10 +48,12 @@ def distribucion_acumulada(N: int, ps: float) -> List[float]:
     return [(1 - (1 - ps) ** i) / (1 - (1 - ps) ** N) for i in range(1, N + 1)]
 
 
-def seleccionar_parental(poblacion_ord: List[Individuo], ps: float) -> Individuo:
+def seleccionar_parental(
+    poblacion_ord: List[Individuo], ps: float, rng: random.Random
+) -> Individuo:
     N = len(poblacion_ord)
     C = distribucion_acumulada(N, ps)
-    u = ra.random()
+    u = rng.random()
     for i, ci in enumerate(C):
         if u <= ci:
             return poblacion_ord[i]
@@ -59,11 +61,11 @@ def seleccionar_parental(poblacion_ord: List[Individuo], ps: float) -> Individuo
 
 
 def seleccionar_padres(
-    poblacion_ord: List[Individuo], ps: float
+    poblacion_ord: List[Individuo], ps: float, rng: random.Random
 ) -> Tuple[Individuo, Individuo]:
     return (
-        seleccionar_parental(poblacion_ord, ps),
-        seleccionar_parental(poblacion_ord, ps),
+        seleccionar_parental(poblacion_ord, ps, rng),
+        seleccionar_parental(poblacion_ord, ps, rng),
     )
 
 

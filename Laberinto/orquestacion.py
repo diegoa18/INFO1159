@@ -113,9 +113,10 @@ def main():
             mejor_j_global = j_actual
             mejor_global_absoluto = (mejor_actual_cromo, mejor_actual_metricas)
             mejores_unicos.clear()
-            mejores_unicos.add((mejor_actual_cromo, mejor_actual_metricas))
-        elif j_actual == mejor_j_global:
-            mejores_unicos.add((mejor_actual_cromo, mejor_actual_metricas))
+
+        for cromo, metricas in evaluados:
+            if funcion_objetivo_J(metricas) == mejor_j_global:
+                mejores_unicos.add((cromo, metricas))
 
         # Guardar metricas para los graficos
         historico_j.append(mejor_j_global)

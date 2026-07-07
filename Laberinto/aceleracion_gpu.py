@@ -1,11 +1,16 @@
 import time
+import warnings
 import numpy as np
 from numba import cuda
+from numba.core.errors import NumbaPerformanceWarning
 from typing import Tuple, List
 
 from cromosoma import Cromosoma, MetricasCromosoma, simular
 
-# Mapeos estáticos inversos para las direcciones
+# silenciar los warnings de rendimiento de numba (por ejemplo, cuando el lote es chico)
+warnings.simplefilter("ignore", category=NumbaPerformanceWarning)
+
+# mapeos estaticos al reves para las direcciones cardinales
 DIR_MAP_REV = {0: "N", 1: "E", 2: "S", 3: "O"}
 
 
@@ -38,12 +43,12 @@ def _kernel_simular_cuda(
     bloques_giros_arr: np.ndarray,
     trayectorias_arr: np.ndarray
 ):
-    """Kernel nativo de CUDA que simula un cromosoma por hilo en la GPU."""
+    # este es el kernel de cuda, cada hilo se va a encargar de simular la trayectoria de un individuo de la poblacion
     i = cuda.grid(1)
     if i < N:
         p_r = inicio_r
         p_c = inicio_c
-        d = 2  # 'S' se mapea a 2
+        d = 2  # la 'S' empieza apuntando al sur (mapeado como 2)
 
         trayectorias_arr[i, 0, 0] = p_r
         trayectorias_arr[i, 0, 1] = p_c
@@ -55,34 +60,34 @@ def _kernel_simular_cuda(
         ha_llegado = (p_r == meta_r and p_c == meta_c)
         acciones_post_meta = 0
 
-        # Simulación paso a paso del autómata
+        # simulamos paso a paso los movimientos en el laberinto
         for k in range(1, n + 1):
             gen = poblacion_num[i, k - 1]
             prev_p_r = p_r
             prev_p_c = p_c
 
-            if gen == 0:  # H (Horario)
+            if gen == 0:  # H (sentido horario)
                 d = (d + 1) % 4
                 contador_giros += 1
-            elif gen == 1:  # A (Antihorario)
+            elif gen == 1:  # A (sentido antihorario)
                 d = (d - 1) % 4
                 contador_giros += 1
-            elif gen == 2:  # M (Movimiento)
+            elif gen == 2:  # M (moverse hacia adelante)
                 dr = 0
                 dc = 0
-                if d == 0:    # N
+                if d == 0:    # norte
                     dr = -1
-                elif d == 1:  # E
+                elif d == 1:  # este
                     dc = 1
-                elif d == 2:  # S
+                elif d == 2:  # sur
                     dr = 1
-                elif d == 3:  # O
+                elif d == 3:  # oeste
                     dc = -1
 
                 nr = p_r + dr
                 nc = p_c + dc
 
-                # Mapeo de transitabilidad: 0, 1, 2 son transitables (< 3), X es muro (3)
+                # vemos si podemos pasar (valores menores a 3 son validos, la X es 3)
                 if 0 <= nr < filas and 0 <= nc < cols and mapa_num[nr, nc] < 3:
                     p_r = nr
                     p_c = nc
@@ -119,7 +124,7 @@ def _kernel_simular_cuda(
         if num_llegadas > 0 and ultima_llegada < n:
             todos_q = True
             for idx in range(ultima_llegada, n):
-                if poblacion_num[i, idx] != 3:  # Q es 3
+                if poblacion_num[i, idx] != 3:  # la Q es 3
                     todos_q = False
                     break
             if todos_q:
@@ -161,11 +166,11 @@ def _kernel_simular_cuda(
         num_bloques_arr[i] = num_bloques
 
 
-# Cache de conversión de mapas
+# cache para no repetir la conversion de mapas
 _cache_mapas = {}
 
+#retorna la matriz del laberinto convertida a números y la guarda en caché para no repetir el cálculo
 def obtener_mapa_num(mapa: np.ndarray) -> np.ndarray:
-    """Retorna la representación numérica del mapa usando caché."""
     mapa_id = id(mapa)
     if mapa_id in _cache_mapas:
         return _cache_mapas[mapa_id]
@@ -186,14 +191,15 @@ def simular_poblacion_acelerada(
     inicio: Tuple[int, int],
     meta: Tuple[int, int],
 ) -> List[MetricasCromosoma]:
-    """Wrapper principal con gestión explícita Host-to-Device y Device-to-Host (CUDA GPU)."""
+    
+    #el wrapper principal que se encarga de mover los datos de la ram a la gpu, lanzar el kernel y traer los resultados de vuelta
     N = len(poblacion)
     n = len(poblacion[0])
     filas, cols = mapa.shape
     inicio_r, inicio_c = inicio
     meta_r, meta_c = meta
     
-    # 1. Traducir toda la población a una matriz de enteros de forma vectorizada
+    # 1. pasamos los genes a una matriz numerica usando una conversion vectorizada
     genes_list = [c.genes for c in poblacion]
     arr_bytes = np.array(genes_list, dtype='S1')
     
@@ -204,20 +210,20 @@ def simular_poblacion_acelerada(
     lookup[81] = 3 # 'Q'
     poblacion_num = np.ascontiguousarray(lookup[arr_bytes.view(np.uint8)], dtype=np.int8)
     
-    # 2. Obtener mapa numérico
+    # 2. obtenemos el mapa numerico en formato contiguo en memoria C
     mapa_num = np.ascontiguousarray(obtener_mapa_num(mapa), dtype=np.int8)
     
-    # 3. Pre-alocar outputs en Host que requieran inicialización de valores centinela
+    # 3. preparamos en memoria ram (host) los arrays que necesitan valores centinela (-1)
     llegadas_efectivas_host = np.ascontiguousarray(np.full((N, n), -1, dtype=np.int32), dtype=np.int32)
     bloques_giros_host = np.ascontiguousarray(np.full((N, n), -1, dtype=np.int32), dtype=np.int32)
     
-    # 4. Transferencia de datos explícita a la memoria global de la GPU (Host to Device)
+    # 4. mandamos los datos directo a la memoria global de la gpu
     d_poblacion = cuda.to_device(poblacion_num)
     d_mapa = cuda.to_device(mapa_num)
     d_llegadas_efectivas = cuda.to_device(llegadas_efectivas_host)
     d_bloques_giros = cuda.to_device(bloques_giros_host)
     
-    # Reservar arrays de salida vacíos en la GPU
+    # reservamos espacio para los datos que la gpu nos va a responder
     d_distancia_final = cuda.device_array(N, dtype=np.int32)
     d_tau = cuda.device_array(N, dtype=np.int32)
     d_es_valido = cuda.device_array(N, dtype=np.bool_)
@@ -233,11 +239,11 @@ def simular_poblacion_acelerada(
     d_num_bloques = cuda.device_array(N, dtype=np.int32)
     d_trayectorias = cuda.device_array((N, n + 1, 2), dtype=np.int16)
     
-    # 5. Configuración dinámica de bloques e hilos CUDA
+    # 5. configuramos la cantidad de bloques e hilos cuda que vamos a usar
     threadsperblock = 256
     blockspergrid = (N + (threadsperblock - 1)) // threadsperblock
     
-    # 6. Lanzar el Kernel de CUDA
+    # 6. lanzamos el kernel a correr en paralelo
     _kernel_simular_cuda[blockspergrid, threadsperblock](
         d_poblacion,
         d_mapa,
@@ -263,10 +269,10 @@ def simular_poblacion_acelerada(
         d_trayectorias
     )
     
-    # Asegurar sincronización del stream de CUDA
+    # esperamos a que la gpu termine de calcular todo
     cuda.synchronize()
     
-    # 7. Copiar resultados de vuelta de la GPU a la RAM del CPU (Device to Host)
+    # 7. nos traemos los resultados calculados por la gpu de vuelta a la ram (host)
     dist_list = d_distancia_final.copy_to_host().tolist()
     tau_list = d_tau.copy_to_host().tolist()
     valido_list = d_es_valido.copy_to_host().tolist()
@@ -285,7 +291,7 @@ def simular_poblacion_acelerada(
     bloques_list = d_bloques_giros.copy_to_host().tolist()
     trayectorias_list = d_trayectorias.copy_to_host().tolist()
     
-    # 8. Reconstrucción a la lista de MetricasCromosoma original
+    # 8. armamos los objetos metricascromosoma con los resultados que nos trajo la gpu
     resultados = []
     for i in range(N):
         nl = num_llegadas_list[i]
@@ -324,12 +330,12 @@ def simular_acelerado(
     inicio: Tuple[int, int],
     meta: Tuple[int, int],
 ) -> MetricasCromosoma:
-    """Usa el motor CUDA del lote para simular un único cromosoma en la GPU."""
+    
+    #simula un solo cromosoma en la gpu pasándolo como un lote de tamaño 1
     return simular_poblacion_acelerada([cromosoma], mapa, inicio, meta)[0]
 
-
+    #compara el resultado de la cpu contra el de la gpu para estar seguros de que la matemática da exactamente igual
 def test_equivalencia(cromosoma: Cromosoma, mapa: np.ndarray, inicio: Tuple[int, int], meta: Tuple[int, int]) -> bool:
-    """Verifica la consistencia matemática entre el simulador secuencial de CPU y el de GPU CUDA."""
     m_sec = simular(cromosoma, mapa, inicio, meta)
     m_acc = simular_acelerado(cromosoma, mapa, inicio, meta)
     
@@ -344,7 +350,7 @@ def test_equivalencia(cromosoma: Cromosoma, mapa: np.ndarray, inicio: Tuple[int,
         val_sec = getattr(m_sec, field)
         val_acc = getattr(m_acc, field)
         if val_sec != val_acc:
-            print(f"Discrepancia en {field}: CPU={val_sec} vs GPU CUDA={val_acc}")
+            print(f"discrepancia en {field}: cpu={val_sec} vs gpu={val_acc}")
             return False
             
     return True
@@ -361,18 +367,19 @@ def correr_benchmark_completo(
     ps: float,
     seed: int
 ) -> Tuple[float, float, float]:
-    """Ejecuta un ciclo evolutivo completo comparando CPU Secuencial vs GPU NVIDIA CUDA."""
+    
+    #corre la evolución completa tanto en cpu secuencial como en gpu cuda para ver qué tanta diferencia de tiempo hay"""
     import random
     from seleccion import ordenar_poblacion, seleccionar_padres
     
-    # Forzar compilación CUDA del kernel previa para evitar overhead de compilación inicial
+    # corremos una simulacion rapida para forzar la compilacion cuda previa y evitar el overhead inicial
     c_test = Cromosoma.aleatorio(n, random.Random(42))
     simular_poblacion_acelerada([c_test], mapa, inicio, meta)
     
     # -------------------------------------------------------------
-    # 1. Medir Ejecución Secuencial (CPU Regular)
+    # 1. medimos la ejecucion secuencial en cpu
     # -------------------------------------------------------------
-    print("Corriendo ciclo evolutivo SECUENCIAL en CPU...")
+    print("corriendo el ciclo evolutivo secuencial en la cpu...")
     rng_sec = random.Random(seed)
     poblacion_sec = [Cromosoma.aleatorio(n, rng_sec) for _ in range(N)]
     
@@ -397,9 +404,9 @@ def correr_benchmark_completo(
     t_sec = t_fin_sec - t_inicio_sec
     
     # -------------------------------------------------------------
-    # 2. Medir Ejecución Acelerada (GPU NVIDIA CUDA)
+    # 2. medimos la ejecucion acelerada en gpu nvidia cuda
     # -------------------------------------------------------------
-    print("Corriendo ciclo evolutivo ACELERADO en GPU NVIDIA CUDA...")
+    print("corriendo el ciclo evolutivo acelerado en la gpu...")
     rng_acc = random.Random(seed)
     poblacion_acc = [Cromosoma.aleatorio(n, rng_acc) for _ in range(N)]
     
@@ -426,23 +433,23 @@ def correr_benchmark_completo(
     
     speedup = t_sec / t_acc
     
-    # Imprimir reporte limpio de resultados binarios
+    # reporte en minusculas con los resultados finales del benchmark
     print("\n" + "="*60)
-    print("      REPORTE COMPARATIVO DE RENDIMIENTO (CPU vs GPU CUDA)")
+    print("      reporte comparativo de rendimiento (cpu vs gpu)")
     print("="*60)
-    print(f"Parámetros del Algoritmo Genético:")
-    print(f"  - Tamaño de la Población (N):  {N}")
-    print(f"  - Longitud del Cromosoma (n):  {n}")
-    print(f"  - Número de Generaciones (G):  {G}")
-    print(f"  - Probabilidad de Mutación (pm): {pm:.4f}")
-    print(f"  - Presión Selectiva (ps):      {ps:.4f}")
-    print(f"  - Semilla Aleatoria (seed):    {seed}")
-    print(f"  - Dimensión del Laberinto:     {mapa.shape[0]}x{mapa.shape[1]}")
+    print(f"parámetros del algoritmo genético:")
+    print(f"  - tamaño de la población (n):  {N}")
+    print(f"  - longitud del cromosoma (n):  {n}")
+    print(f"  - número de generaciones (g):  {G}")
+    print(f"  - probabilidad de mutación (pm): {pm:.4f}")
+    print(f"  - presión selectiva (ps):      {ps:.4f}")
+    print(f"  - semilla aleatoria (seed):    {seed}")
+    print(f"  - dimensión del laberinto:     {mapa.shape[0]}x{mapa.shape[1]}")
     print("-"*60)
-    print(f"Tiempos de ejecución totales (Evolución completa):")
-    print(f"  - Tiempo CPU Secuencial (T_sec):               {t_sec:.5f} s")
-    print(f"  - Tiempo GPU NVIDIA CUDA (T_acc):              {t_acc:.5f} s")
-    print(f"    -> FACTOR DE ACELERACIÓN NETO (S):            {speedup:.2f}x")
+    print(f"tiempos de ejecución de la evolución completa:")
+    print(f"  - tiempo en cpu secuencial (t_sec):             {t_sec:.5f} s")
+    print(f"  - tiempo en gpu cuda (t_acc):                  {t_acc:.5f} s")
+    print(f"    -> factor de aceleración neto (s):            {speedup:.2f}x")
     print("="*60 + "\n")
     
     return t_sec, t_acc, speedup

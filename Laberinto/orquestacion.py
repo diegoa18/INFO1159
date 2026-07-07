@@ -1,5 +1,6 @@
 # Orquestación algoritmo Genético para la Resolución de Laberintos
 import random
+import sys
 
 import matplotlib.pyplot as plt
 
@@ -48,9 +49,11 @@ def mostrar_mejores_unicos(mejores_unicos, mejor_j_global):
     print("REPORTE DE MEJORES CROMOSOMAS ÚNICOS")
     print("=" * 50)
     print(f"Mejor J global encontrado: {mejor_j_global:.2f}")
+    print(f"Fitness (ϕ): {-mejor_j_global:.2f}")
 
     for i, (cromo, metricas) in enumerate(mejores_unicos, 1):
         print(f"\nSolución Única #{i}")
+
         print(f"Cromosoma: {cromo.genes}")
         print(f"Pasos tomados (tau): {metricas.tau}")
         print(f"Trayectoria auditada (X, Y):")
@@ -69,6 +72,23 @@ def main(simulador_fn=simular):
     G = int(input("Número de generaciones (G): "))
     ps = float(input("Presión selectiva (ps, ej: 0.05): "))
     seed = int(input("Semilla aleatoria (seed): "))
+
+    if n < 1:
+        print("error: n debe ser al menos 1")
+        sys.exit(1)
+    if not (0 < pm < 1):
+        print("error: pm debe estar entre 0 y 1")
+        sys.exit(1)
+    if G < 1:
+        print("error: G debe ser al menos 1")
+        sys.exit(1)
+    if not (0 < ps < 1):
+        print("error: ps debe estar entre 0 y 1")
+        sys.exit(1)
+
+    if N_pob < 3:
+        print("error: la poblacion (N) debe ser almenos 3")
+        sys.exit(1)
 
     # Validacion rapida de poblacion impar (requisito de la pauta)
     if N_pob % 2 == 0:

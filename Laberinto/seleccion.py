@@ -29,22 +29,20 @@ def ordenar_poblacion(poblacion: List[Individuo]) -> List[Individuo]:
     return sorted(poblacion, key=clave_ordenamiento)
 
 
-def validar_poblacion_impar(N: int) -> bool:
-    return N >= 3 and N % 2 == 1
-
-
-def pesos_ranking_geometrico(N: int, ps: float) -> List[float]:
-    # para un parametro Ps E (0,1) los pesos no normalizados serán
-    return [ps * (1 - ps) ** (i - 1) for i in range(1, N + 1)]
-
-
-def probabilidades_normalizadas(N: int, ps: float) -> List[float]:
-    pesos = pesos_ranking_geometrico(N, ps)
-    suma = sum(pesos)
-    return [p / suma for p in pesos]
+# def pesos_ranking_geometrico(N: int, ps: float) -> List[float]:
+#    # para un parametro Ps E (0,1) los pesos no normalizados serán
+#    return [ps * (1 - ps) ** (i - 1) for i in range(1, N + 1)]
+#
+#
+# def probabilidades_normalizadas(N: int, ps: float) -> List[float]:
+#    pesos = pesos_ranking_geometrico(N, ps)
+#    suma = sum(pesos)
+#    return [p / suma for p in pesos]
 
 
 def distribucion_acumulada(N: int, ps: float) -> List[float]:
+    if ps <= 0 or ps >= 1:
+        raise ValueError("ps debe estar entre 0 y 1")
     return [(1 - (1 - ps) ** i) / (1 - (1 - ps) ** N) for i in range(1, N + 1)]
 
 
@@ -69,7 +67,7 @@ def seleccionar_padres(
     )
 
 
-def elitismo(
-    mejor_global: Individuo, poblacion_ord: List[Individuo]
-) -> List[Individuo]:
-    return [mejor_global]
+# def elitismo(
+#    mejor_global: Individuo, poblacion_ord: List[Individuo]
+# ) -> List[Individuo]:
+#    return [mejor_global]

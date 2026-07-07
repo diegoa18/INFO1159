@@ -59,7 +59,7 @@ def mostrar_mejores_unicos(mejores_unicos, mejor_j_global):
     print("=" * 50)
 
 
-def main():
+def main(simulador_fn=simular):
     # 1. Solicitar parametros por consola
     print("--- Configuración del Algoritmo Genético ---")
     ruta_csv = input("Ingresa la ruta del archivo CSV (ej: input.csv): ")
@@ -99,7 +99,7 @@ def main():
     # 4. Ciclo de generaciones
     for gen in range(params["G"]):
         # Simular y emparejar cada cromosoma con sus metricas (Tupla: Individuo)
-        evaluados = [(c, simular(c, mapa, inicio, meta)) for c in poblacion]
+        evaluados = [(c, simulador_fn(c, mapa, inicio, meta)) for c in poblacion]
 
         # Ordenar con la funcion de Joaquin (usa la funcion J de Dani internamente)
         ordenados = ordenar_poblacion(evaluados)

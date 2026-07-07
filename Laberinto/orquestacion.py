@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # Imports reales de los modulos de tus companeros
 import parser_csv
 from cromosoma import Cromosoma, simular
-from fitness import funcion_objetivo_J
+from fitness import fitness, funcion_objetivo_J
 from seleccion import ordenar_poblacion, seleccionar_padres
 
 # ---- ORQUESTACION Y RESULTADOS ----
@@ -43,13 +43,13 @@ def graficar_proporcion_validas(historico_validas):
     plt.show()
 
 
-def mostrar_mejores_unicos(mejores_unicos, mejor_j_global):
+def mostrar_mejores_unicos(mejores_unicos, mejor_j_global, metricas_mejor):
     # Imprime en consola los cromosomas unicos empatados en el mejor J
     print("\n" + "=" * 50)
     print("REPORTE DE MEJORES CROMOSOMAS ÚNICOS")
     print("=" * 50)
     print(f"Mejor J global encontrado: {mejor_j_global:.2f}")
-    print(f"Fitness (ϕ): {-mejor_j_global:.2f}")
+    print(f"Fitness (ϕ): {fitness(metricas_mejor):.2f}")
 
     for i, (cromo, metricas) in enumerate(mejores_unicos, 1):
         print(f"\nSolución Única #{i}")
@@ -168,7 +168,7 @@ def main(simulador_fn=simular):
     print("Evolución terminada. Generando reportes...")
 
     # 6. Mostrar resultados exigidos por la pauta
-    mostrar_mejores_unicos(mejores_unicos, mejor_j_global)
+    mostrar_mejores_unicos(mejores_unicos, mejor_j_global, mejor_global_absoluto[1])
     graficar_evolucion_j(historico_j)
     graficar_proporcion_validas(historico_validas)
 

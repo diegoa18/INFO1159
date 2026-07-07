@@ -58,8 +58,10 @@ def funcion_objetivo_J(resultado: MetricasCromosoma) -> float:
     )
 
 
-# def fitness(resultado: MetricasCromosoma) -> float:
-#    return -funcion_objetivo_J(resultado)
+def fitness(resultado: MetricasCromosoma) -> float:
+    return -funcion_objetivo_J(resultado)
+
+
 #
 #
 # def evaluar_poblacion(

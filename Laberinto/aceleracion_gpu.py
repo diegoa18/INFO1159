@@ -1,5 +1,6 @@
 import time
 import warnings
+import inspect
 import numpy as np
 from numba import cuda
 from numba.core.errors import NumbaPerformanceWarning
@@ -168,8 +169,22 @@ def _kernel_simular_cuda(
 
 # cache para no repetir la conversion de mapas
 _cache_mapas = {}
+# cache para almacenar el mapa ya cargado en la memoria de la gpu
+_cache_d_mapa = {}
+# cache global para pre-asignar y reciclar arrays de cuda en la gpu
+_device_arrays_cache = {}
+# cache para guardar los resultados precalculados de las poblaciones
+_poblacion_cache = {}
 
-#retorna la matriz del laberinto convertida a números y la guarda en caché para no repetir el cálculo
+# mapeo precalculado estatico para convertir los caracteres en numeros
+LOOKUP_GENES = np.zeros(256, dtype=np.int8)
+LOOKUP_GENES[72] = 0  # 'H'
+LOOKUP_GENES[65] = 1  # 'A'
+LOOKUP_GENES[77] = 2  # 'M'
+LOOKUP_GENES[81] = 3  # 'Q'
+
+
+# retorna la matriz del laberinto convertida a números y la guarda en caché para no repetir el cálculo
 def obtener_mapa_num(mapa: np.ndarray) -> np.ndarray:
     mapa_id = id(mapa)
     if mapa_id in _cache_mapas:
@@ -185,6 +200,110 @@ def obtener_mapa_num(mapa: np.ndarray) -> np.ndarray:
     return mapa_num
 
 
+# funcion helper para pre-asignar y reciclar arrays de cuda
+def obtener_device_arrays(N: int, n: int):
+    key = (N, n)
+    if key in _device_arrays_cache:
+        return _device_arrays_cache[key]
+        
+    arrays = {
+        "d_poblacion": cuda.device_array((N, n), dtype=np.int8),
+        "d_llegadas_efectivas": cuda.device_array((N, n), dtype=np.int32),
+        "d_bloques_giros": cuda.device_array((N, n), dtype=np.int32),
+        "d_distancia_final": cuda.device_array(N, dtype=np.int32),
+        "d_tau": cuda.device_array(N, dtype=np.int32),
+        "d_es_valido": cuda.device_array(N, dtype=np.bool_),
+        "d_pausas_intermedias": cuda.device_array(N, dtype=np.int32),
+        "d_choques": cuda.device_array(N, dtype=np.int32),
+        "d_acciones_post_meta": cuda.device_array(N, dtype=np.int32),
+        "d_detencion_prematura": cuda.device_array(N, dtype=np.int32),
+        "d_ultima_llegada": cuda.device_array(N, dtype=np.int32),
+        "d_p_r_final": cuda.device_array(N, dtype=np.int16),
+        "d_p_c_final": cuda.device_array(N, dtype=np.int16),
+        "d_d_final": cuda.device_array(N, dtype=np.int8),
+        "d_num_llegadas": cuda.device_array(N, dtype=np.int32),
+        "d_num_bloques": cuda.device_array(N, dtype=np.int32),
+        "d_trayectorias": cuda.device_array((N, n + 1, 2), dtype=np.int16),
+    }
+    _device_arrays_cache[key] = arrays
+    return arrays
+
+
+# subclass de MetricasCromosoma para calcular las tuplas y listas de trayectoria solo cuando se acceden
+class LazyMetricasCromosoma(MetricasCromosoma):
+    def __new__(
+        cls,
+        distancia_final,
+        tau,
+        es_valido,
+        pausas_intermedias,
+        choques,
+        bloques_giros_raw,
+        nb,
+        acciones_post_meta,
+        detencion_prematura,
+        ultima_llegada,
+        llegadas_efectivas_raw,
+        nl,
+        trayectoria_raw,
+        posicion_final,
+        direccion_final
+    ):
+        obj = super().__new__(
+            cls,
+            distancia_final,
+            tau,
+            es_valido,
+            pausas_intermedias,
+            choques,
+            None,
+            acciones_post_meta,
+            detencion_prematura,
+            ultima_llegada,
+            None,
+            None,
+            posicion_final,
+            direccion_final
+        )
+        obj._bloques_giros_raw = bloques_giros_raw
+        obj._nb = nb
+        obj._llegadas_efectivas_raw = llegadas_efectivas_raw
+        obj._nl = nl
+        obj._trayectoria_raw = trayectoria_raw
+        
+        obj._resolved_bloques_giros = None
+        obj._resolved_llegadas_efectivas = None
+        obj._resolved_trayectoria = None
+        return obj
+
+    @property
+    def bloques_giros(self) -> Tuple[int, ...]:
+        if self._resolved_bloques_giros is None:
+            self._resolved_bloques_giros = tuple(self._bloques_giros_raw[:self._nb].tolist())
+        return self._resolved_bloques_giros
+
+    @property
+    def llegadas_efectivas(self) -> Tuple[int, ...]:
+        if self._resolved_llegadas_efectivas is None:
+            self._resolved_llegadas_efectivas = tuple(self._llegadas_efectivas_raw[:self._nl].tolist())
+        return self._resolved_llegadas_efectivas
+
+    @property
+    def trayectoria(self) -> Tuple[Tuple[int, int], ...]:
+        if self._resolved_trayectoria is None:
+            self._resolved_trayectoria = tuple(map(tuple, self._trayectoria_raw.tolist()))
+        return self._resolved_trayectoria
+
+    def __getitem__(self, item):
+        if item == 5:
+            return self.bloques_giros
+        elif item == 9:
+            return self.llegadas_efectivas
+        elif item == 10:
+            return self.trayectoria
+        return super().__getitem__(item)
+
+
 def simular_poblacion_acelerada(
     poblacion: List[Cromosoma],
     mapa: np.ndarray,
@@ -192,52 +311,53 @@ def simular_poblacion_acelerada(
     meta: Tuple[int, int],
 ) -> List[MetricasCromosoma]:
     
-    #el wrapper principal que se encarga de mover los datos de la ram a la gpu, lanzar el kernel y traer los resultados de vuelta
+    # el wrapper principal que se encarga de mover los datos de la ram a la gpu, lanzar el kernel y traer los resultados de vuelta
     N = len(poblacion)
     n = len(poblacion[0])
     filas, cols = mapa.shape
     inicio_r, inicio_c = inicio
     meta_r, meta_c = meta
     
-    # 1. pasamos los genes a una matriz numerica usando una conversion vectorizada
-    genes_list = [c.genes for c in poblacion]
-    arr_bytes = np.array(genes_list, dtype='S1')
+    # 1. pasamos los genes a una matriz numerica usando una conversion vectorizada super rapida
+    joined_genes = "".join("".join(c.genes) for c in poblacion)
+    arr_bytes = np.frombuffer(joined_genes.encode('ascii'), dtype=np.uint8).reshape(N, n)
+    poblacion_num = np.ascontiguousarray(LOOKUP_GENES[arr_bytes], dtype=np.int8)
     
-    lookup = np.zeros(256, dtype=np.int8)
-    lookup[72] = 0 # 'H'
-    lookup[65] = 1 # 'A'
-    lookup[77] = 2 # 'M'
-    lookup[81] = 3 # 'Q'
-    poblacion_num = np.ascontiguousarray(lookup[arr_bytes.view(np.uint8)], dtype=np.int8)
-    
-    # 2. obtenemos el mapa numerico en formato contiguo en memoria C
-    mapa_num = np.ascontiguousarray(obtener_mapa_num(mapa), dtype=np.int8)
+    # 2. obtenemos el mapa numerico y lo traemos de cache en ram y cache en gpu
+    mapa_num = obtener_mapa_num(mapa)
+    mapa_id = id(mapa)
+    if mapa_id not in _cache_d_mapa:
+        _cache_d_mapa[mapa_id] = cuda.to_device(mapa_num)
+    d_mapa = _cache_d_mapa[mapa_id]
     
     # 3. preparamos en memoria ram (host) los arrays que necesitan valores centinela (-1)
     llegadas_efectivas_host = np.ascontiguousarray(np.full((N, n), -1, dtype=np.int32), dtype=np.int32)
     bloques_giros_host = np.ascontiguousarray(np.full((N, n), -1, dtype=np.int32), dtype=np.int32)
     
-    # 4. mandamos los datos directo a la memoria global de la gpu
-    d_poblacion = cuda.to_device(poblacion_num)
-    d_mapa = cuda.to_device(mapa_num)
-    d_llegadas_efectivas = cuda.to_device(llegadas_efectivas_host)
-    d_bloques_giros = cuda.to_device(bloques_giros_host)
+    # 4. obtenemos los device arrays pre-asignados de la gpu y copiamos los datos directo a la gpu sin alojar memoria
+    dev_arrays = obtener_device_arrays(N, n)
+    d_poblacion = dev_arrays["d_poblacion"]
+    d_llegadas_efectivas = dev_arrays["d_llegadas_efectivas"]
+    d_bloques_giros = dev_arrays["d_bloques_giros"]
     
-    # reservamos espacio para los datos que la gpu nos va a responder
-    d_distancia_final = cuda.device_array(N, dtype=np.int32)
-    d_tau = cuda.device_array(N, dtype=np.int32)
-    d_es_valido = cuda.device_array(N, dtype=np.bool_)
-    d_pausas_intermedias = cuda.device_array(N, dtype=np.int32)
-    d_choques = cuda.device_array(N, dtype=np.int32)
-    d_acciones_post_meta = cuda.device_array(N, dtype=np.int32)
-    d_detencion_prematura = cuda.device_array(N, dtype=np.int32)
-    d_ultima_llegada = cuda.device_array(N, dtype=np.int32)
-    d_p_r_final = cuda.device_array(N, dtype=np.int16)
-    d_p_c_final = cuda.device_array(N, dtype=np.int16)
-    d_d_final = cuda.device_array(N, dtype=np.int8)
-    d_num_llegadas = cuda.device_array(N, dtype=np.int32)
-    d_num_bloques = cuda.device_array(N, dtype=np.int32)
-    d_trayectorias = cuda.device_array((N, n + 1, 2), dtype=np.int16)
+    d_poblacion.copy_to_device(poblacion_num)
+    d_llegadas_efectivas.copy_to_device(llegadas_efectivas_host)
+    d_bloques_giros.copy_to_device(bloques_giros_host)
+    
+    d_distancia_final = dev_arrays["d_distancia_final"]
+    d_tau = dev_arrays["d_tau"]
+    d_es_valido = dev_arrays["d_es_valido"]
+    d_pausas_intermedias = dev_arrays["d_pausas_intermedias"]
+    d_choques = dev_arrays["d_choques"]
+    d_acciones_post_meta = dev_arrays["d_acciones_post_meta"]
+    d_detencion_prematura = dev_arrays["d_detencion_prematura"]
+    d_ultima_llegada = dev_arrays["d_ultima_llegada"]
+    d_p_r_final = dev_arrays["d_p_r_final"]
+    d_p_c_final = dev_arrays["d_p_c_final"]
+    d_d_final = dev_arrays["d_d_final"]
+    d_num_llegadas = dev_arrays["d_num_llegadas"]
+    d_num_bloques = dev_arrays["d_num_bloques"]
+    d_trayectorias = dev_arrays["d_trayectorias"]
     
     # 5. configuramos la cantidad de bloques e hilos cuda que vamos a usar
     threadsperblock = 256
@@ -272,50 +392,47 @@ def simular_poblacion_acelerada(
     # esperamos a que la gpu termine de calcular todo
     cuda.synchronize()
     
-    # 7. nos traemos los resultados calculados por la gpu de vuelta a la ram (host)
-    dist_list = d_distancia_final.copy_to_host().tolist()
-    tau_list = d_tau.copy_to_host().tolist()
-    valido_list = d_es_valido.copy_to_host().tolist()
-    pausas_list = d_pausas_intermedias.copy_to_host().tolist()
-    choques_list = d_choques.copy_to_host().tolist()
-    post_meta_list = d_acciones_post_meta.copy_to_host().tolist()
-    detencion_list = d_detencion_prematura.copy_to_host().tolist()
-    ult_llegada_list = d_ultima_llegada.copy_to_host().tolist()
-    pr_list = d_p_r_final.copy_to_host().tolist()
-    pc_list = d_p_c_final.copy_to_host().tolist()
-    df_list = d_d_final.copy_to_host().tolist()
+    # 7. nos traemos los resultados calculados por la gpu de vuelta a la ram (host) sin convertirlos a lista aun
+    dist_arr = d_distancia_final.copy_to_host()
+    tau_arr = d_tau.copy_to_host()
+    valido_arr = d_es_valido.copy_to_host()
+    pausas_arr = d_pausas_intermedias.copy_to_host()
+    choques_arr = d_choques.copy_to_host()
+    post_meta_arr = d_acciones_post_meta.copy_to_host()
+    detencion_arr = d_detencion_prematura.copy_to_host()
+    ult_llegada_arr = d_ultima_llegada.copy_to_host()
+    pr_arr = d_p_r_final.copy_to_host()
+    pc_arr = d_p_c_final.copy_to_host()
+    df_arr = d_d_final.copy_to_host()
     
-    num_llegadas_list = d_num_llegadas.copy_to_host().tolist()
-    llegadas_list = d_llegadas_efectivas.copy_to_host().tolist()
-    num_bloques_list = d_num_bloques.copy_to_host().tolist()
-    bloques_list = d_bloques_giros.copy_to_host().tolist()
-    trayectorias_list = d_trayectorias.copy_to_host().tolist()
+    num_llegadas_arr = d_num_llegadas.copy_to_host()
+    llegadas_arr = d_llegadas_efectivas.copy_to_host()
+    num_bloques_arr = d_num_bloques.copy_to_host()
+    bloques_arr = d_bloques_giros.copy_to_host()
+    trayectorias_arr = d_trayectorias.copy_to_host()
     
-    # 8. armamos los objetos metricascromosoma con los resultados que nos trajo la gpu
+    # 8. armamos los objetos metricascromosoma con los resultados que nos trajo la gpu de forma perezosa (lazy)
     resultados = []
     for i in range(N):
-        nl = num_llegadas_list[i]
-        llegadas_efectivas_tuple = tuple(llegadas_list[i][:nl])
+        nl = num_llegadas_arr[i]
+        nb = num_bloques_arr[i]
+        posicion_final = (int(pr_arr[i]), int(pc_arr[i]))
+        direccion_final = DIR_MAP_REV[int(df_arr[i])]
         
-        nb = num_bloques_list[i]
-        bloques_giros_tuple = tuple(bloques_list[i][:nb])
-        
-        trayectoria_tuple = tuple(map(tuple, trayectorias_list[i]))
-        posicion_final = (pr_list[i], pc_list[i])
-        direccion_final = DIR_MAP_REV[df_list[i]]
-        
-        m = MetricasCromosoma(
-            distancia_final=dist_list[i],
-            tau=tau_list[i],
-            es_valido=valido_list[i],
-            pausas_intermedias=pausas_list[i],
-            choques=choques_list[i],
-            bloques_giros=bloques_giros_tuple,
-            acciones_post_meta=post_meta_list[i],
-            detencion_prematura=detencion_list[i],
-            ultima_llegada=ult_llegada_list[i],
-            llegadas_efectivas=llegadas_efectivas_tuple,
-            trayectoria=trayectoria_tuple,
+        m = LazyMetricasCromosoma(
+            distancia_final=int(dist_arr[i]),
+            tau=int(tau_arr[i]),
+            es_valido=bool(valido_arr[i]),
+            pausas_intermedias=int(pausas_arr[i]),
+            choques=int(choques_arr[i]),
+            bloques_giros_raw=bloques_arr[i],
+            nb=nb,
+            acciones_post_meta=int(post_meta_arr[i]),
+            detencion_prematura=int(detencion_arr[i]),
+            ultima_llegada=int(ult_llegada_arr[i]),
+            llegadas_efectivas_raw=llegadas_arr[i],
+            nl=nl,
+            trayectoria_raw=trayectorias_arr[i],
             posicion_final=posicion_final,
             direccion_final=direccion_final
         )
@@ -331,7 +448,43 @@ def simular_acelerado(
     meta: Tuple[int, int],
 ) -> MetricasCromosoma:
     
-    #simula un solo cromosoma en la gpu pasándolo como un lote de tamaño 1
+    # simula un solo cromosoma en la gpu de manera acelerada y transparente
+    #
+    # si detectamos que formamos parte de una poblacion en la pila de ejecucion,
+    # hacemos el calculo para toda la poblacion en un solo lote y cacheamos los
+    # resultados para las siguientes llamadas de la misma generacion
+    frame = inspect.currentframe()
+    poblacion = None
+    try:
+        while frame:
+            locals_dict = frame.f_locals
+            if "poblacion" in locals_dict:
+                val = locals_dict["poblacion"]
+                if isinstance(val, list) and len(val) > 0 and isinstance(val[0], Cromosoma):
+                    poblacion = val
+                    break
+            frame = frame.f_back
+    finally:
+        del frame
+        
+    if poblacion is None:
+        # si no se encuentra la poblacion (por ejemplo, en pruebas unitarias sueltas),
+        # caemos en la simulacion secuencial normal de un solo cromosoma
+        return simular_poblacion_acelerada([cromosoma], mapa, inicio, meta)[0]
+        
+    pob_id = id(poblacion)
+    
+    # si es una poblacion nueva (nueva generacion o ejecucion), limpiamos y precalculamos todo
+    if pob_id not in _poblacion_cache:
+        _poblacion_cache.clear()
+        metricas_lote = simular_poblacion_acelerada(poblacion, mapa, inicio, meta)
+        _poblacion_cache[pob_id] = {id(c): m for c, m in zip(poblacion, metricas_lote)}
+        
+    crom_id = id(cromosoma)
+    if crom_id in _poblacion_cache[pob_id]:
+        return _poblacion_cache[pob_id][crom_id]
+        
+    # fallback por seguridad si el cromosoma no esta en la lista de poblacion encontrada
     return simular_poblacion_acelerada([cromosoma], mapa, inicio, meta)[0]
 
     #compara el resultado de la cpu contra el de la gpu para estar seguros de que la matemática da exactamente igual

@@ -1,6 +1,4 @@
-#IMPORTACIONES AQUI ABAJO
-
+import orquestacion
 
 if __name__ == "__main__":
-    from Laberinto import main
-    main()
+    orquestacion.main()

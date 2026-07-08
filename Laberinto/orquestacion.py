@@ -109,6 +109,7 @@ def main(simulador_fn=simular, params=None, silencioso=False):
     rng = random.Random(params["seed"])
 
     # 3. Poblacion inicial usando la clase de Diego
+    # creamos una lista de cromosomas aleatorios en RAM
     poblacion = [Cromosoma.aleatorio(params["n"], rng) for _ in range(params["N"])]
 
     mejor_global_absoluto = None
@@ -116,7 +117,7 @@ def main(simulador_fn=simular, params=None, silencioso=False):
     historico_j = []
     historico_validas = []
 
-    # Set para guardar solo elementos unicos que empaten en el primer lugar
+    # set para guardar los mejores cromosomas unicos que empaten en el primer lugar
     mejores_unicos = set()
 
     if not silencioso:
@@ -124,51 +125,55 @@ def main(simulador_fn=simular, params=None, silencioso=False):
 
     # 4. Ciclo de generaciones
     for gen in range(params["G"]):
-        # Simular y emparejar cada cromosoma con sus metricas (Tupla: Individuo)
+        # evaluamos la población. si simulador_fn es simular_acelerado, el interceptor detiene esto
+        # y simula todo el lote en la gpu en el primer ciclo, respondiendo los demás desde caché
         evaluados = [(c, simulador_fn(c, mapa, inicio, meta)) for c in poblacion]
 
-        # Ordenar con la funcion de Joaquin (usa la funcion J de Dani internamente)
+        # ordenamos usando las reglas de deb (prioridad factible, menor J, menor distancia, menor pasos)
         ordenados = ordenar_poblacion(evaluados)
 
-        # Rescatar el mejor de esta generacion (el indice 0 tras ordenar)
+        # rescatamos al mejor absoluto de la generación actual (índice 0 tras ordenar)
         mejor_actual_cromo, mejor_actual_metricas = ordenados[0]
         j_actual = funcion_objetivo_J(mejor_actual_metricas)
 
-        # Actualizar elitismo y tracking de unicos absolutos
+        # elitismo puro: actualizamos al mejor global histórico si encontramos una solución con menor J
         if j_actual < mejor_j_global:
             mejor_j_global = j_actual
             mejor_global_absoluto = (mejor_actual_cromo, mejor_actual_metricas)
             mejores_unicos.clear()
 
+        # guardamos los empatados en el primer lugar (para el reporte final de soluciones únicas)
         for cromo, metricas in evaluados:
             if funcion_objetivo_J(metricas) == mejor_j_global:
                 mejores_unicos.add((cromo, metricas))
 
-        # Guardar metricas para los graficos
+        # guardamos estadísticas para generar los gráficos requeridos por la rúbrica
         historico_j.append(mejor_j_global)
         cant_validas = sum(1 for _, m in evaluados if m.es_valido)
         historico_validas.append(cant_validas / params["N"])
 
-        # 5. Elitismo: construir la nueva poblacion reservando el primer cupo
+        # 5. Elitismo: la nueva población hereda al mejor absoluto en su primer slot
         nueva_pob_cromosomas = [mejor_global_absoluto[0].copiar()]
 
-        # Rellenar los N-1 espacios restantes con hijos generados por operadores
+        # rellenamos los N-1 cupos restantes reproduciendo a los mejores individuos
         while len(nueva_pob_cromosomas) < params["N"]:
+            # seleccionamos dos padres de forma geométrica
             p1, p2 = seleccionar_padres(ordenados, params["ps"], rng)
 
+            # cruce monopunto en un índice aleatorio
             punto_corte = rng.randint(1, params["n"] - 1)
-            # p1[0] y p2[0] acceden al objeto Cromosoma dentro de la tupla Individuo
             h1, h2 = p1[0].cruzar_un_punto(p2[0], punto_corte)
 
+            # mutación gen a gen independiente
             h1.mutar(params["pm"], rng)
             h2.mutar(params["pm"], rng)
 
             nueva_pob_cromosomas.append(h1)
-            # Asegurar no pasarnos del limite impar al agregar el segundo hijo
+            # ojo aquí: validamos no pasarnos del límite impar N al agregar al segundo hijo
             if len(nueva_pob_cromosomas) < params["N"]:
                 nueva_pob_cromosomas.append(h2)
 
-        # Reemplazar la poblacion antigua por la nueva
+        # reemplazamos la población antigua por la nueva generación para la siguiente iteración
         poblacion = nueva_pob_cromosomas
 
     if not silencioso:

@@ -5,19 +5,20 @@ import sys
 import numpy as np
 
 
+# cargamos el laberinto desde un csv y aplicamos un montón de validaciones para asegurar que el laberinto sea correcto
 def cargar_laberinto(ruta_archivo):
     matriz_temporal = []
     if not os.path.exists(ruta_archivo):
         print(f"error: el archivo {ruta_archivo} no existe")
         sys.exit(1)
-    # abrimos el archivo csv pa leerlo. asegurarse de estar en directorio /Laberinto
+        
+    # leemos el csv fila por fila limpiando espacios fantasmas
     with open(ruta_archivo, mode="r", encoding="utf-8") as archivo:
         lector_csv = csv.reader(archivo)
         for fila in lector_csv:
-            # limpiamos los espacios por si el archivo viene mal ingresado
             fila_limpia = [celda.strip() for celda in fila]
 
-            # validacion : solo simbolos permitidos (0, 1, 2, X)
+            # la rúbrica exige que solo se acepten caracteres 0, 1, 2 o X. si viene otra cosa, rompemos de inmediato
             for celda in fila_limpia:
                 if celda not in ["0", "1", "2", "X"]:
                     print("error: simbolo no permitido, solo se aceptan 0, 1, 2, X.")
@@ -25,29 +26,34 @@ def cargar_laberinto(ruta_archivo):
 
             matriz_temporal.append(fila_limpia)
 
+    # validamos que no nos pasen un csv vacío
     if len(matriz_temporal) == 0:
         print("error: el archivo CSV esta vacio")
         sys.exit(1)
     if len(matriz_temporal[0]) == 0:
         print("error: el archivo CSV no tiene columnas")
         sys.exit(1)
+        
+    # comprobamos que sea una matriz bidimensional simétrica
     for fila in matriz_temporal:
         if len(fila) != len(matriz_temporal[0]):
             print("error: filas con distinto numero de columnas")
             sys.exit(1)
 
-    # pasamos todo a una matriz de numpy en formato texto pa que no se pierdan los '0', '1', '2' y 'X'
+    # pasamos el mapa a un array de numpy para operar con comodidad
     mapa_numpy = np.array(matriz_temporal, dtype=str)
     m, c = mapa_numpy.shape
 
+    # el mapa mínimo es de 3x3 para tener un perímetro y un interior coherente
     if m < 3 or c < 3:
         print("error: el mapa debe tener al menos 3 filas y 3 columnas")
         sys.exit(1)
 
-    # validacion: lugares de inicio (1) y meta (2)
+    # buscamos el inicio (1) y la meta (2) en la matriz
     inicios = np.argwhere(mapa_numpy == "1")
     metas = np.argwhere(mapa_numpy == "2")
 
+    # la rúbrica exige estrictamente un solo inicio y una sola meta
     if len(inicios) != 1 or len(metas) != 1:
         print(
             "error: el mapa tiene que tener exactamente un inicio (1) y una meta (2)."
@@ -57,13 +63,17 @@ def cargar_laberinto(ruta_archivo):
     inicio = tuple(inicios[0])
     meta = tuple(metas[0])
 
+    # la rúbrica exige que el inicio (1) esté en la segunda fila (índice 1)
     if inicio[0] != 1:
         print("error: la salida (1) debe estar en la fila 2 (is=2)")
         sys.exit(1)
+        
+    # la rúbrica exige que la meta (2) esté en la penúltima fila (índice m-2)
     if meta[0] != m - 2:
         print("error: la llegada (2) debe estar en la fila m-1 (iz=m-1)")
         sys.exit(1)
 
+    # validamos que el perímetro exterior del mapa sea puramente de muros 'X'
     if not (
         np.all(mapa_numpy[0, :] == "X")
         and np.all(mapa_numpy[m - 1, :] == "X")
@@ -73,12 +83,14 @@ def cargar_laberinto(ruta_archivo):
         print("error: revisar el muro del csv.")
         sys.exit(1)
 
+    # validación de vecindario de moore (3x3 alrededor):
+    # chequeamos que las celdas interiores colindantes no tengan muros bloqueando el paso inicial o final
     def vecindario_interior_despejado(posicion):
         i, j = posicion
         for di in [-1, 0, 1]:
             for dj in [-1, 0, 1]:
                 if di == 0 and dj == 0:
-                    continue  # nos saltamos la celda central
+                    continue  # saltamos el centro
 
                 ni, nj = i + di, j + dj
                 if 0 < ni < m - 1 and 0 < nj < c - 1:
@@ -86,6 +98,7 @@ def cargar_laberinto(ruta_archivo):
                         return False
         return True
 
+    # si hay algún muro en el vecindario interno del inicio o la meta, rechazamos el mapa
     if not vecindario_interior_despejado(inicio) or not vecindario_interior_despejado(
         meta
     ):
@@ -97,6 +110,7 @@ def cargar_laberinto(ruta_archivo):
     return mapa_numpy, inicio, meta
 
 
+# pedimos interactivamente los parámetros para ejecutar el algoritmo genético
 def pedir_inputs():
     print("configuracion del algoritmo genetico")
     ruta_csv = input("ingresa la ruta del archivo csv (ej: input.csv): ")

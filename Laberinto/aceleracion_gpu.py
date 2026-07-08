@@ -44,13 +44,16 @@ def _kernel_simular_cuda(
     bloques_giros_arr: np.ndarray,
     trayectorias_arr: np.ndarray
 ):
-    # este es el kernel de cuda, cada hilo se va a encargar de simular la trayectoria de un individuo de la poblacion
+    # este es el kernel de cuda: cada hilo físico de la gpu simula a un individuo de la población
+    # calculamos el índice global del hilo en la grilla de ejecución unidimensional
     i = cuda.grid(1)
     if i < N:
+        # inicializamos la posición del robot en el laberinto
         p_r = inicio_r
         p_c = inicio_c
-        d = 2  # la 'S' empieza apuntando al sur (mapeado como 2)
+        d = 2  # la 'S' empieza apuntando al sur (mapeado como 2 para operar con operaciones modulares)
 
+        # la trayectoria en la posición inicial se guarda en la primera posición del array de salida de la gpu
         trayectorias_arr[i, 0, 0] = p_r
         trayectorias_arr[i, 0, 1] = p_c
 
@@ -61,19 +64,19 @@ def _kernel_simular_cuda(
         ha_llegado = (p_r == meta_r and p_c == meta_c)
         acciones_post_meta = 0
 
-        # simulamos paso a paso los movimientos en el laberinto
+        # simulamos paso a paso en la gpu cada movimiento codificado en los genes del cromosoma
         for k in range(1, n + 1):
             gen = poblacion_num[i, k - 1]
             prev_p_r = p_r
             prev_p_c = p_c
 
-            if gen == 0:  # H (sentido horario)
+            if gen == 0:  # H (sentido horario: norte -> este -> sur -> oeste)
                 d = (d + 1) % 4
                 contador_giros += 1
-            elif gen == 1:  # A (sentido antihorario)
+            elif gen == 1:  # A (sentido antihorario: norte -> oeste -> sur -> este)
                 d = (d - 1) % 4
                 contador_giros += 1
-            elif gen == 2:  # M (moverse hacia adelante)
+            elif gen == 2:  # M (moverse hacia adelante según el frente del autómata)
                 dr = 0
                 dc = 0
                 if d == 0:    # norte
@@ -88,62 +91,75 @@ def _kernel_simular_cuda(
                 nr = p_r + dr
                 nc = p_c + dc
 
-                # vemos si podemos pasar (valores menores a 3 son validos, la X es 3)
+                # validamos colisión: si está dentro del laberinto y es transitable (< 3, o sea, 0, 1 o 2 en el mapa)
                 if 0 <= nr < filas and 0 <= nc < cols and mapa_num[nr, nc] < 3:
                     p_r = nr
                     p_c = nc
+                    # si veníamos acumulando giros y finalmente nos movimos, cerramos y registramos el bloque de giros
                     if contador_giros > 0:
                         bloques_giros_arr[i, num_bloques] = contador_giros
                         num_bloques += 1
                         contador_giros = 0
                 else:
+                    # choco contra un muro exterior/interior o se intentó salir del laberinto
                     choques += 1
 
+            # registramos penalización post-meta si sigue moviéndose después de haber pisado la meta
             if ha_llegado and (gen == 0 or gen == 1 or gen == 2) and (prev_p_r == meta_r and prev_p_c == meta_c):
                 acciones_post_meta += 1
+            # guardamos el paso de llegada si cruza la meta por primera vez
             if (p_r == meta_r and p_c == meta_c) and (prev_p_r != meta_r or prev_p_c != meta_c):
                 llegadas_efectivas_arr[i, num_llegadas] = k
                 num_llegadas += 1
             if p_r == meta_r and p_c == meta_c:
                 ha_llegado = True
 
+            # registramos las coordenadas en el array tridimensional de trayectorias
             trayectorias_arr[i, k, 0] = p_r
             trayectorias_arr[i, k, 1] = p_c
 
+        # si el cromosoma terminó y quedaron giros sin cerrar, los guardamos en el bloque final
         if contador_giros > 0:
             bloques_giros_arr[i, num_bloques] = contador_giros
             num_bloques += 1
 
+        # cálculo de la distancia manhattan al objetivo al final del recorrido
         distancia_final = abs(p_r - meta_r) + abs(p_c - meta_c)
 
         ultima_llegada = 0
         if num_llegadas > 0:
+            # recuperamos el paso de la última llegada efectiva a la meta
             ultima_llegada = llegadas_efectivas_arr[i, num_llegadas - 1]
 
+        # validación de factibilidad (es_valido y tau):
+        # si pisó la meta, comprobamos que el resto de las acciones hasta el final sean únicamente 'Q's (3)
         es_valido = False
         tau = n + 1
         if num_llegadas > 0 and ultima_llegada < n:
             todos_q = True
             for idx in range(ultima_llegada, n):
-                if poblacion_num[i, idx] != 3:  # la Q es 3
+                if poblacion_num[i, idx] != 3:  # la Q es 3 en el lookup
                     todos_q = False
                     break
             if todos_q:
                 es_valido = True
                 tau = ultima_llegada
 
+        # buscamos la última acción que no haya sido una 'Q'
         ultimo_no_q = -1
         for idx in range(n - 1, -1, -1):
             if poblacion_num[i, idx] != 3:
                 ultimo_no_q = idx
                 break
 
+        # calculamos pausas intermedias: apariciones de 'Q' antes de la última acción no-Q
         pausas_intermedias = 0
         if ultimo_no_q >= 0:
             for idx in range(ultimo_no_q):
                 if poblacion_num[i, idx] == 3:
                     pausas_intermedias += 1
 
+        # calculamos detención prematura: cantidad de 'Q's al final de la simulación en individuos inválidos
         detencion_prematura = 0
         if not es_valido:
             for idx in range(n - 1, -1, -1):
@@ -152,6 +168,7 @@ def _kernel_simular_cuda(
                 else:
                     break
 
+        # guardamos todas las métricas en los respectivos arrays de salida en la VRAM de la GPU
         distancia_final_arr[i] = distancia_final
         tau_arr[i] = tau
         es_valido_arr[i] = es_valido
@@ -167,30 +184,31 @@ def _kernel_simular_cuda(
         num_bloques_arr[i] = num_bloques
 
 
-# cache para no repetir la conversion de mapas
+# caché en ram para no repetir la traducción del mapa de caracteres a números np.int8
 _cache_mapas = {}
-# cache para almacenar el mapa ya cargado en la memoria de la gpu
+# caché en vram: subimos la matriz del mapa del laberinto a la memoria de la gpu una sola vez y guardamos el device pointer aquí
 _cache_d_mapa = {}
-# cache global para pre-asignar y reciclar arrays de cuda en la gpu
+# pool de arrays de cuda: pre-asignamos y reciclamos los arreglos de salida en la gpu para no pagar la costosa creación de memoria de cuda en cada generación
 _device_arrays_cache = {}
-# cache para guardar los resultados precalculados de las poblaciones
+# caché del interceptor de población: almacena las métricas calculadas en el lote para que las n-1 llamadas secuenciales se sirvan al instante
 _poblacion_cache = {}
 
-# mapeo precalculado estatico para convertir los caracteres en numeros
+# lookup table estática para traducir los caracteres 'H', 'A', 'M', 'Q' a enteros {0, 1, 2, 3} de forma vectorizada usando indexación directa
 LOOKUP_GENES = np.zeros(256, dtype=np.int8)
-LOOKUP_GENES[72] = 0  # 'H'
-LOOKUP_GENES[65] = 1  # 'A'
-LOOKUP_GENES[77] = 2  # 'M'
-LOOKUP_GENES[81] = 3  # 'Q'
+LOOKUP_GENES[72] = 0  # ASCII de 'H'
+LOOKUP_GENES[65] = 1  # ASCII de 'A'
+LOOKUP_GENES[77] = 2  # ASCII de 'M'
+LOOKUP_GENES[81] = 3  # ASCII de 'Q'
 
 
-# retorna la matriz del laberinto convertida a números y la guarda en caché para no repetir el cálculo
+# traduce el mapa del laberinto a números np.int8 y lo guarda en caché local de la cpu
 def obtener_mapa_num(mapa: np.ndarray) -> np.ndarray:
     mapa_id = id(mapa)
     if mapa_id in _cache_mapas:
         return _cache_mapas[mapa_id]
         
     if mapa.dtype.kind in ('U', 'S'):
+        # convertimos caracteres '0', '1', '2', 'X' a valores 0, 1, 2, 3 en memoria contigua en C
         mapa_dict = {'0': 0, '1': 1, '2': 2, 'X': 3}
         mapa_num = np.ascontiguousarray(np.vectorize(mapa_dict.get)(mapa), dtype=np.int8)
     else:
@@ -200,7 +218,8 @@ def obtener_mapa_num(mapa: np.ndarray) -> np.ndarray:
     return mapa_num
 
 
-# funcion helper para pre-asignar y reciclar arrays de cuda
+# pre-asigna u obtiene del caché todos los arreglos de memoria CUDA requeridos para lanzar el kernel.
+# esto evita sobrecargar el driver gráfico de nvidia instanciando y liberando memoria en cada generación
 def obtener_device_arrays(N: int, n: int):
     key = (N, n)
     if key in _device_arrays_cache:
@@ -229,7 +248,9 @@ def obtener_device_arrays(N: int, n: int):
     return arrays
 
 
-# subclass de MetricasCromosoma para calcular las tuplas y listas de trayectoria solo cuando se acceden
+# esta subclase de MetricasCromosoma evita construir miles de tuplas/listas pesadas en RAM (como la trayectoria o giros)
+# durante cada paso de la evolución. Solo si la CPU accede explícitamente a estas propiedades (ej: al final de la corrida
+# para graficar o reportar la solución), decodificamos el array plano traído de la GPU a tuplas de Python.
 class LazyMetricasCromosoma(MetricasCromosoma):
     def __new__(
         cls,
@@ -249,6 +270,7 @@ class LazyMetricasCromosoma(MetricasCromosoma):
         posicion_final,
         direccion_final
     ):
+        # instanciamos la clase base inicializando las tuplas perezosas como None
         obj = super().__new__(
             cls,
             distancia_final,
@@ -265,6 +287,7 @@ class LazyMetricasCromosoma(MetricasCromosoma):
             posicion_final,
             direccion_final
         )
+        # guardamos las referencias crudas en formato de numpy arrays planos traídos de la GPU
         obj._bloques_giros_raw = bloques_giros_raw
         obj._nb = nb
         obj._llegadas_efectivas_raw = llegadas_efectivas_raw
@@ -278,23 +301,28 @@ class LazyMetricasCromosoma(MetricasCromosoma):
 
     @property
     def bloques_giros(self) -> Tuple[int, ...]:
+        # decodificamos los giros solo en el momento que alguien lo solicite (evaluación perezosa)
         if self._resolved_bloques_giros is None:
             self._resolved_bloques_giros = tuple(self._bloques_giros_raw[:self._nb].tolist())
         return self._resolved_bloques_giros
 
     @property
     def llegadas_efectivas(self) -> Tuple[int, ...]:
+        # decodificamos los pasos de llegada solo en el momento que se solicite
         if self._resolved_llegadas_efectivas is None:
             self._resolved_llegadas_efectivas = tuple(self._llegadas_efectivas_raw[:self._nl].tolist())
         return self._resolved_llegadas_efectivas
 
     @property
     def trayectoria(self) -> Tuple[Tuple[int, int], ...]:
+        # decodificar la trayectoria (lista de coordenadas x,y) es muy costoso en tiempo de cpu en cada generación.
+        # la guardamos como un array plano de numpy y solo la convertimos a tuplas de python cuando se consulta
         if self._resolved_trayectoria is None:
             self._resolved_trayectoria = tuple(map(tuple, self._trayectoria_raw.tolist()))
         return self._resolved_trayectoria
 
     def __getitem__(self, item):
+        # mapeamos los índices de namedtuple por si el orquestador accede mediante desempaquetado posicional
         if item == 5:
             return self.bloques_giros
         elif item == 9:
@@ -341,39 +369,44 @@ def simular_poblacion_acelerada(
     meta: Tuple[int, int],
 ) -> List[MetricasCromosoma]:
     
-    # el wrapper principal que se encarga de mover los datos de la ram a la gpu, lanzar el kernel y traer los resultados de vuelta
+    # el orquestador principal de la gpu: mueve los datos a la tarjeta, configura la grilla, corre el kernel y descarga las respuestas
     N = len(poblacion)
     n = len(poblacion[0])
     filas, cols = mapa.shape
     inicio_r, inicio_c = inicio
     meta_r, meta_c = meta
     
-    # 1. pasamos los genes a una matriz numerica usando una conversion vectorizada super rapida
+    # 1. traducción ultra-rápida: en vez de iterar uno a uno en python, concatenamos todos los genes en un string en C,
+    # lo leemos a nivel de bytes como array numpy contiguo y mapeamos los caracteres usando el LOOKUP_GENES vectorizado.
+    # esto reduce a milisegundos la traducción genotipo-fenotipo
     joined_genes = "".join("".join(c.genes) for c in poblacion)
     arr_bytes = np.frombuffer(joined_genes.encode('ascii'), dtype=np.uint8).reshape(N, n)
     poblacion_num = np.ascontiguousarray(LOOKUP_GENES[arr_bytes], dtype=np.int8)
     
-    # 2. obtenemos el mapa numerico y lo traemos de cache en ram y cache en gpu
+    # 2. caché del mapa en vram: subimos la matriz del mapa a la gpu solo la primera vez y reciclamos el puntero.
+    # esto evita transferir el mapa completo por el bus PCIe en cada una de las generaciones
     mapa_num = obtener_mapa_num(mapa)
     mapa_id = id(mapa)
     if mapa_id not in _cache_d_mapa:
         _cache_d_mapa[mapa_id] = cuda.to_device(mapa_num)
     d_mapa = _cache_d_mapa[mapa_id]
     
-    # 3. preparamos en memoria ram (host) los arrays que necesitan valores centinela (-1)
+    # 3. preparamos arrays contiguos en ram con valores centinela (-1) para indicar celdas vacías/no-alcanzadas
     llegadas_efectivas_host = np.ascontiguousarray(np.full((N, n), -1, dtype=np.int32), dtype=np.int32)
     bloques_giros_host = np.ascontiguousarray(np.full((N, n), -1, dtype=np.int32), dtype=np.int32)
     
-    # 4. obtenemos los device arrays pre-asignados de la gpu y copiamos los datos directo a la gpu sin alojar memoria
+    # 4. reciclamos los arreglos de salida de la gpu usando el pool pre-asignado para evitar overhead de drivers nvidia
     dev_arrays = obtener_device_arrays(N, n)
     d_poblacion = dev_arrays["d_poblacion"]
     d_llegadas_efectivas = dev_arrays["d_llegadas_efectivas"]
     d_bloques_giros = dev_arrays["d_bloques_giros"]
     
+    # copiamos los inputs directamente a la memoria de la gpu
     d_poblacion.copy_to_device(poblacion_num)
     d_llegadas_efectivas.copy_to_device(llegadas_efectivas_host)
     d_bloques_giros.copy_to_device(bloques_giros_host)
     
+    # referenciamos los device pointers para las salidas
     d_distancia_final = dev_arrays["d_distancia_final"]
     d_tau = dev_arrays["d_tau"]
     d_es_valido = dev_arrays["d_es_valido"]
@@ -389,11 +422,11 @@ def simular_poblacion_acelerada(
     d_num_bloques = dev_arrays["d_num_bloques"]
     d_trayectorias = dev_arrays["d_trayectorias"]
     
-    # 5. configuramos la cantidad de bloques e hilos cuda que vamos a usar
+    # 5. configuramos la ejecución paralela: 256 hilos por bloque de la gpu
     threadsperblock = 256
     blockspergrid = (N + (threadsperblock - 1)) // threadsperblock
     
-    # 6. lanzamos el kernel a correr en paralelo
+    # 6. disparamos el kernel paralelo en la gpu
     _kernel_simular_cuda[blockspergrid, threadsperblock](
         d_poblacion,
         d_mapa,
@@ -419,10 +452,10 @@ def simular_poblacion_acelerada(
         d_trayectorias
     )
     
-    # esperamos a que la gpu termine de calcular todo
+    # forzamos a que la cpu se detenga y espere a que todos los núcleos de la gpu terminen de calcular
     cuda.synchronize()
     
-    # 7. nos traemos los resultados calculados por la gpu de vuelta a la ram (host) sin convertirlos a lista aun
+    # 7. traemos los resultados brutos de vuelta a la memoria ram
     dist_arr = d_distancia_final.copy_to_host()
     tau_arr = d_tau.copy_to_host()
     valido_arr = d_es_valido.copy_to_host()
@@ -480,9 +513,8 @@ def simular_acelerado(
     
     # simula un solo cromosoma en la gpu de manera acelerada y transparente
     #
-    # si detectamos que formamos parte de una poblacion en la pila de ejecucion,
-    # hacemos el calculo para toda la poblacion en un solo lote y cacheamos los
-    # resultados para las siguientes llamadas de la misma generacion
+    # magia negra: usamos inspect para robar la variable de la ram (poblacion) de la pila de llamadas.
+    # esto nos permite batchar toda la simulación en un solo viaje de gpu sin tocar la orquestacion de cpu
     frame = inspect.currentframe()
     poblacion = None
     try:
@@ -495,26 +527,27 @@ def simular_acelerado(
                     break
             frame = frame.f_back
     finally:
+        # eliminamos referencias al frame para evitar fugas de memoria en python
         del frame
         
     if poblacion is None:
-        # si no se encuentra la poblacion (por ejemplo, en pruebas unitarias sueltas),
-        # caemos en la simulacion secuencial normal de un solo cromosoma
+        # si no se encuentra la lista de la población (ej: pruebas unitarias sueltas), simulamos un solo cromosoma en GPU
         return simular_poblacion_acelerada([cromosoma], mapa, inicio, meta)[0]
         
     pob_id = id(poblacion)
     
-    # si es una poblacion nueva (nueva generacion o ejecucion), limpiamos y precalculamos todo
+    # si es una población nueva (es decir, una nueva generación), limpiamos el caché viejo y mandamos el lote completo a la gpu de una sola vez
     if pob_id not in _poblacion_cache:
         _poblacion_cache.clear()
         metricas_lote = simular_poblacion_acelerada(poblacion, mapa, inicio, meta)
         _poblacion_cache[pob_id] = {id(c): m for c, m in zip(poblacion, metricas_lote)}
         
     crom_id = id(cromosoma)
+    # las siguientes n-1 llamadas del ciclo de python leen al instante el resultado desde el caché en ram
     if crom_id in _poblacion_cache[pob_id]:
         return _poblacion_cache[pob_id][crom_id]
         
-    # fallback por seguridad si el cromosoma no esta en la lista de poblacion encontrada
+    # fallback por seguridad por si el cromosoma no estaba en la lista recuperada
     return simular_poblacion_acelerada([cromosoma], mapa, inicio, meta)[0]
 
     #compara el resultado de la cpu contra el de la gpu para estar seguros de que la matemática da exactamente igual

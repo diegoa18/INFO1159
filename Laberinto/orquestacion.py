@@ -62,16 +62,20 @@ def mostrar_mejores_unicos(mejores_unicos, mejor_j_global, metricas_mejor):
     print("=" * 50)
 
 
-def main(simulador_fn=simular):
-    # 1. Solicitar parametros por consola
-    print("--- Configuración del Algoritmo Genético ---")
-    ruta_csv = input("Ingresa la ruta del archivo CSV (ej: input.csv): ")
-    n = int(input("Longitud del cromosoma (n): "))
-    pm = float(input("Probabilidad de mutación (pm, ej: 0.1): "))
-    N_pob = int(input("Tamaño de la población (N, debe ser impar): "))
-    G = int(input("Número de generaciones (G): "))
-    ps = float(input("Presión selectiva (ps, ej: 0.05): "))
-    seed = int(input("Semilla aleatoria (seed): "))
+def main(simulador_fn=simular, params=None, silencioso=False):
+    # 1. Solicitar parametros por consola o usar los provistos
+    if params is None:
+        if not silencioso:
+            print("--- Configuración del Algoritmo Genético ---")
+        ruta_csv, n, pm, N_pob, G, ps, seed = parser_csv.pedir_inputs()
+    else:
+        ruta_csv = params.get("ruta_csv", "input.csv")
+        n = params["n"]
+        pm = params["pm"]
+        N_pob = params["N"]
+        G = params["G"]
+        ps = params["ps"]
+        seed = params["seed"]
 
     if n < 1:
         print("error: n debe ser al menos 1")
@@ -92,9 +96,10 @@ def main(simulador_fn=simular):
 
     # Validacion rapida de poblacion impar (requisito de la pauta)
     if N_pob % 2 == 0:
-        print(
-            "Aviso: La población debe ser impar. Sumando 1 al tamaño de la población."
-        )
+        if not silencioso:
+            print(
+                "Aviso: La población debe ser impar. Sumando 1 al tamaño de la población."
+            )
         N_pob += 1
 
     params = {"n": n, "pm": pm, "N": N_pob, "G": G, "ps": ps, "seed": seed}
@@ -114,7 +119,8 @@ def main(simulador_fn=simular):
     # Set para guardar solo elementos unicos que empaten en el primer lugar
     mejores_unicos = set()
 
-    print("\nIniciando evolución...")
+    if not silencioso:
+        print("\nIniciando evolución...")
 
     # 4. Ciclo de generaciones
     for gen in range(params["G"]):
@@ -165,12 +171,14 @@ def main(simulador_fn=simular):
         # Reemplazar la poblacion antigua por la nueva
         poblacion = nueva_pob_cromosomas
 
-    print("Evolución terminada. Generando reportes...")
+    if not silencioso:
+        print("Evolución terminada. Generando reportes...")
 
     # 6. Mostrar resultados exigidos por la pauta
-    mostrar_mejores_unicos(mejores_unicos, mejor_j_global, mejor_global_absoluto[1])
-    graficar_evolucion_j(historico_j)
-    graficar_proporcion_validas(historico_validas)
+    if not silencioso:
+        mostrar_mejores_unicos(mejores_unicos, mejor_j_global, mejor_global_absoluto[1])
+        graficar_evolucion_j(historico_j)
+        graficar_proporcion_validas(historico_validas)
 
 
 if __name__ == "__main__":

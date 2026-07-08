@@ -303,6 +303,36 @@ class LazyMetricasCromosoma(MetricasCromosoma):
             return self.trayectoria
         return super().__getitem__(item)
 
+    def __hash__(self) -> int:
+        return hash((
+            self.distancia_final,
+            self.tau,
+            self.es_valido,
+            self.pausas_intermedias,
+            self.choques,
+            self.acciones_post_meta,
+            self.detencion_prematura,
+            self.ultima_llegada,
+            self.posicion_final,
+            self.direccion_final
+        ))
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, MetricasCromosoma):
+            return False
+        return (
+            self.distancia_final == other.distancia_final and
+            self.tau == other.tau and
+            self.es_valido == other.es_valido and
+            self.pausas_intermedias == other.pausas_intermedias and
+            self.choques == other.choques and
+            self.acciones_post_meta == other.acciones_post_meta and
+            self.detencion_prematura == other.detencion_prematura and
+            self.ultima_llegada == other.ultima_llegada and
+            self.posicion_final == other.posicion_final and
+            self.direccion_final == other.direccion_final
+        )
+
 
 def simular_poblacion_acelerada(
     poblacion: List[Cromosoma],
@@ -521,70 +551,42 @@ def correr_benchmark_completo(
     seed: int
 ) -> Tuple[float, float, float]:
     
-    #corre la evolución completa tanto en cpu secuencial como en gpu cuda para ver qué tanta diferencia de tiempo hay"""
+    # corre la evolución completa tanto en cpu secuencial como en gpu cuda de forma silenciosa para medir rendimiento
     import random
-    from seleccion import ordenar_poblacion, seleccionar_padres
+    import orquestacion
+    from cromosoma import simular
     
-    # corremos una simulacion rapida para forzar la compilacion cuda previa y evitar el overhead inicial
-    c_test = Cromosoma.aleatorio(n, random.Random(42))
-    simular_poblacion_acelerada([c_test], mapa, inicio, meta)
+    # 1. calentar GPU / compiler
+    try:
+        c_test = Cromosoma.aleatorio(n, random.Random(seed))
+        simular_acelerado(c_test, mapa, inicio, meta)
+    except Exception:
+        pass
+        
+    params = {
+        "n": n,
+        "pm": pm,
+        "N": N,
+        "G": G,
+        "ps": ps,
+        "seed": seed
+    }
     
-    # -------------------------------------------------------------
-    # 1. medimos la ejecucion secuencial en cpu
-    # -------------------------------------------------------------
+    # 2. medir cpu secuencial
     print("corriendo el ciclo evolutivo secuencial en la cpu...")
-    rng_sec = random.Random(seed)
-    poblacion_sec = [Cromosoma.aleatorio(n, rng_sec) for _ in range(N)]
-    
     t_inicio_sec = time.perf_counter()
-    for gen in range(G):
-        evaluados = [(c, simular(c, mapa, inicio, meta)) for c in poblacion_sec]
-        ordenados = ordenar_poblacion(evaluados)
-        mejor_actual = ordenados[0]
-        nueva_pob = [mejor_actual[0].copiar()]
-        
-        while len(nueva_pob) < N:
-            p1, p2 = seleccionar_padres(ordenados, ps, rng_sec)
-            punto_corte = rng_sec.randint(1, n - 1)
-            h1, h2 = p1[0].cruzar_un_punto(p2[0], punto_corte)
-            h1.mutar(pm, rng_sec)
-            h2.mutar(pm, rng_sec)
-            nueva_pob.append(h1)
-            if len(nueva_pob) < N:
-                nueva_pob.append(h2)
-        poblacion_sec = nueva_pob
-    t_fin_sec = time.perf_counter()
-    t_sec = t_fin_sec - t_inicio_sec
+    orquestacion.main(simulador_fn=simular, params=params, silencioso=True)
+    t_sec = time.perf_counter() - t_inicio_sec
+    print(f"completado en cpu: {t_sec:.5f} s")
     
-    # -------------------------------------------------------------
-    # 2. medimos la ejecucion acelerada en gpu nvidia cuda
-    # -------------------------------------------------------------
+    # 3. medir gpu acelerada
     print("corriendo el ciclo evolutivo acelerado en la gpu...")
-    rng_acc = random.Random(seed)
-    poblacion_acc = [Cromosoma.aleatorio(n, rng_acc) for _ in range(N)]
-    
     t_inicio_acc = time.perf_counter()
-    for gen in range(G):
-        metricas_lote = simular_poblacion_acelerada(poblacion_acc, mapa, inicio, meta)
-        evaluados = list(zip(poblacion_acc, metricas_lote))
-        ordenados = ordenar_poblacion(evaluados)
-        mejor_actual = ordenados[0]
-        nueva_pob = [mejor_actual[0].copiar()]
-        
-        while len(nueva_pob) < N:
-            p1, p2 = seleccionar_padres(ordenados, ps, rng_acc)
-            punto_corte = rng_acc.randint(1, n - 1)
-            h1, h2 = p1[0].cruzar_un_punto(p2[0], punto_corte)
-            h1.mutar(pm, rng_acc)
-            h2.mutar(pm, rng_acc)
-            nueva_pob.append(h1)
-            if len(nueva_pob) < N:
-                nueva_pob.append(h2)
-        poblacion_acc = nueva_pob
-    t_fin_acc = time.perf_counter()
-    t_acc = t_fin_acc - t_inicio_acc
+    orquestacion.main(simulador_fn=simular_acelerado, params=params, silencioso=True)
+    t_acc = time.perf_counter() - t_inicio_acc
+    print(f"completado en gpu: {t_acc:.5f} s")
     
-    speedup = t_sec / t_acc
+    speedup = t_sec / t_acc if t_acc > 0 else 1.0
     
     # reporte en minusculas con los resultados finales del benchmark
     print("\n" + "="*60)

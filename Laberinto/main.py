@@ -23,9 +23,7 @@ if __name__ == "__main__":
         from aceleracion_gpu import correr_benchmark_completo
         
         ruta_csv, n, pm, N, G, ps, seed = parser_csv.pedir_inputs()
-        
         mapa, inicio, meta = parser_csv.cargar_laberinto(ruta_csv)
-        
         correr_benchmark_completo(mapa, inicio, meta, n, N, G, pm, ps, seed)
     else:
         orquestacion.main()

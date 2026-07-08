@@ -1,4 +1,5 @@
 import random
+from functools import lru_cache
 from typing import List, Tuple
 
 from cromosoma import Cromosoma, MetricasCromosoma
@@ -40,11 +41,17 @@ def probabilidades_normalizadas(N: int, ps: float) -> List[float]:
     return [p / suma for p in pesos]
 
 
+@lru_cache(maxsize=16)
 def distribucion_acumulada(N: int, ps: float) -> List[float]:
     if ps <= 0 or ps >= 1:
         raise ValueError("ps debe estar entre 0 y 1")
     probs = probabilidades_normalizadas(N, ps)
-    return [sum(probs[:i]) for i in range(1, N + 1)]
+    C = []
+    acumulado = 0.0
+    for p in probs:
+        acumulado += p
+        C.append(acumulado)
+    return C
 
 
 def seleccionar_parental(

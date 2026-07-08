@@ -79,8 +79,8 @@ class Cromosoma:
     def __iter__(self) -> Iterator[str]:
         return iter(self._genes)
 
-    def __reversed__(self) -> Iterator[str]:
-        return reversed(self._genes)
+    # def __reversed__(self) -> Iterator[str]:
+    #    return reversed(self._genes)
 
     def __repr__(self) -> str:
         return f"Cromosoma({''.join(self._genes)})"

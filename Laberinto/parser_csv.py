@@ -1,4 +1,5 @@
 import csv
+import os
 import sys
 
 import numpy as np
@@ -6,7 +7,9 @@ import numpy as np
 
 def cargar_laberinto(ruta_archivo):
     matriz_temporal = []
-
+    if not os.path.exists(ruta_archivo):
+        print(f"error: el archivo {ruta_archivo} no existe")
+        sys.exit(1)
     # abrimos el archivo csv pa leerlo. asegurarse de estar en directorio /Laberinto
     with open(ruta_archivo, mode="r", encoding="utf-8") as archivo:
         lector_csv = csv.reader(archivo)
@@ -22,9 +25,24 @@ def cargar_laberinto(ruta_archivo):
 
             matriz_temporal.append(fila_limpia)
 
+    if len(matriz_temporal) == 0:
+        print("error: el archivo CSV esta vacio")
+        sys.exit(1)
+    if len(matriz_temporal[0]) == 0:
+        print("error: el archivo CSV no tiene columnas")
+        sys.exit(1)
+    for fila in matriz_temporal:
+        if len(fila) != len(matriz_temporal[0]):
+            print("error: filas con distinto numero de columnas")
+            sys.exit(1)
+
     # pasamos todo a una matriz de numpy en formato texto pa que no se pierdan los '0', '1', '2' y 'X'
     mapa_numpy = np.array(matriz_temporal, dtype=str)
-    m, r = mapa_numpy.shape
+    m, c = mapa_numpy.shape
+
+    if m < 3 or c < 3:
+        print("error: el mapa debe tener al menos 3 filas y 3 columnas")
+        sys.exit(1)
 
     # validacion: lugares de inicio (1) y meta (2)
     inicios = np.argwhere(mapa_numpy == "1")
@@ -50,7 +68,7 @@ def cargar_laberinto(ruta_archivo):
         np.all(mapa_numpy[0, :] == "X")
         and np.all(mapa_numpy[m - 1, :] == "X")
         and np.all(mapa_numpy[:, 0] == "X")
-        and np.all(mapa_numpy[:, r - 1] == "X")
+        and np.all(mapa_numpy[:, c - 1] == "X")
     ):
         print("error: revisar el muro del csv.")
         sys.exit(1)
@@ -63,7 +81,7 @@ def cargar_laberinto(ruta_archivo):
                     continue  # nos saltamos la celda central
 
                 ni, nj = i + di, j + dj
-                if 0 < ni < m - 1 and 0 < nj < r - 1:
+                if 0 < ni < m - 1 and 0 < nj < c - 1:
                     if mapa_numpy[ni, nj] == "X":
                         return False
         return True
@@ -79,17 +97,21 @@ def cargar_laberinto(ruta_archivo):
     return mapa_numpy, inicio, meta
 
 
-if __name__ == "__main__":
-    # input de variables para el algoritmo genetico
+def pedir_inputs():
     print("configuracion del algoritmo genetico")
     ruta_csv = input("ingresa la ruta del archivo csv (ej: input.csv): ")
-
-    # los datos obligatorios que pide el profe en el pdf
     n = int(input("longitud del cromosoma (n): "))
     pm = float(input("probabilidad de mutacion (pm, ej: 0.1): "))
-    N_pob = int(input("tamano de la poblacion (n, debe ser impar): "))
+    N = int(input("tamano de la poblacion (n, debe ser impar): "))
     G = int(input("numero de generaciones (g): "))
     ps = float(input("presion selectiva (ps, ej: 0.05): "))
     seed = int(input("semilla aleatoria (seed): "))
+    return ruta_csv, n, pm, N, G, ps, seed
 
+
+if __name__ == "__main__":
+    ruta_csv, n, pm, N, G, ps, seed = pedir_inputs()
     mapa, inicio, meta = cargar_laberinto(ruta_csv)
+    print(
+        f"Éxito: Laberinto '{ruta_csv}' cargado. Dimensiones: {mapa.shape}, Inicio: {inicio}, Meta: {meta}"
+    )

@@ -62,28 +62,30 @@ def fitness(resultado: MetricasCromosoma) -> float:
     return -funcion_objetivo_J(resultado)
 
 
-def evaluar_poblacion(
-    poblacion: List[MetricasCromosoma],
-) -> List[Tuple[MetricasCromosoma, float]]:
-
-    return [(resultado, fitness(resultado)) for resultado in poblacion]
-
-
-def seleccionar_mejor(
-    poblacion: List[MetricasCromosoma],
-) -> Tuple[MetricasCromosoma, float]:
-
-    if not poblacion:
-        raise ValueError("La poblacion no puede estar vacia")
-
-    mejor_resultado = poblacion[0]
-    mejor_fitness = fitness(mejor_resultado)
-
-    for resultado in poblacion[1:]:
-        valor = fitness(resultado)
-
-        if valor > mejor_fitness:
-            mejor_resultado = resultado
-            mejor_fitness = valor
-
-    return mejor_resultado, mejor_fitness
+#
+#
+# def evaluar_poblacion(
+#    poblacion: List[MetricasCromosoma],
+# ) -> List[Tuple[MetricasCromosoma, float]]:
+#
+#    return [(resultado, fitness(resultado)) for resultado in poblacion]
+#
+#
+# def seleccionar_mejor(
+#    poblacion: List[MetricasCromosoma],
+# ) -> Tuple[MetricasCromosoma, float]:
+#
+#    if not poblacion:
+#        raise ValueError("La poblacion no puede estar vacia")
+#
+#    mejor_resultado = poblacion[0]
+#    mejor_fitness = fitness(mejor_resultado)
+#
+#    for resultado in poblacion[1:]:
+#        valor = fitness(resultado)
+#
+#        if valor > mejor_fitness:
+#            mejor_resultado = resultado
+#            mejor_fitness = valor
+#
+#    return mejor_resultado, mejor_fitness

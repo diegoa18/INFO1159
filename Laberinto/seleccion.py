@@ -1,4 +1,5 @@
 import random
+from functools import lru_cache
 from typing import List, Tuple
 
 from cromosoma import Cromosoma, MetricasCromosoma
@@ -29,10 +30,6 @@ def ordenar_poblacion(poblacion: List[Individuo]) -> List[Individuo]:
     return sorted(poblacion, key=clave_ordenamiento)
 
 
-def validar_poblacion_impar(N: int) -> bool:
-    return N >= 3 and N % 2 == 1
-
-
 def pesos_ranking_geometrico(N: int, ps: float) -> List[float]:
     # para un parametro Ps E (0,1) los pesos no normalizados serán
     return [ps * (1 - ps) ** (i - 1) for i in range(1, N + 1)]
@@ -44,8 +41,17 @@ def probabilidades_normalizadas(N: int, ps: float) -> List[float]:
     return [p / suma for p in pesos]
 
 
+@lru_cache(maxsize=16)
 def distribucion_acumulada(N: int, ps: float) -> List[float]:
-    return [(1 - (1 - ps) ** i) / (1 - (1 - ps) ** N) for i in range(1, N + 1)]
+    if ps <= 0 or ps >= 1:
+        raise ValueError("ps debe estar entre 0 y 1")
+    probs = probabilidades_normalizadas(N, ps)
+    C = []
+    acumulado = 0.0
+    for p in probs:
+        acumulado += p
+        C.append(acumulado)
+    return C
 
 
 def seleccionar_parental(
@@ -69,7 +75,7 @@ def seleccionar_padres(
     )
 
 
-def elitismo(
-    mejor_global: Individuo, poblacion_ord: List[Individuo]
-) -> List[Individuo]:
-    return [mejor_global]
+# def elitismo(
+#    mejor_global: Individuo, poblacion_ord: List[Individuo]
+# ) -> List[Individuo]:
+#    return [mejor_global]
